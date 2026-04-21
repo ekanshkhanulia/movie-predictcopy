@@ -98,7 +98,7 @@ class MovieLensDataset:
         
     def get_loader(self, split, batch_size):
         """Converts a data split into a PyTorch DataLoader for batch sampling during training."""
-        X = torch.tensor(self.splits[split][0], dtype=torch.int64)
+        X = torch.tensor(self.splits[split][0], dtype=torch.int64) #seq
         y = torch.tensor(self.splits[split][1], dtype=torch.int64)
 
         # Only shuffles training data

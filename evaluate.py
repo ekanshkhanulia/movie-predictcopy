@@ -28,6 +28,13 @@ def ndcg_at_k(rank, k):
         return 0.0
     return 1.0 / math.log2(rank + 1)  # If in top-k, reward higher ranks more (rank 1 gets highest score).
 
+
+def format_trunc_6(x):
+    factor = 10 ** 6
+    y = math.trunc(float(x) * factor) / factor
+    return f"{y:.6f}"
+
+
 #step 
 def build_model_from_checkpoint(ckpt_path,dataset):
     ckpt=torch.load(ckpt_path,map_location="cpu") # Loads saved checkpoint dictionary from disk to CPU memory.
@@ -114,15 +121,15 @@ def main(args):
 
 
     print("Validation Metrics:")
-    print("Recall@10=", round(val_metrics["recall@10"],4))
-    print("  Recall@20 =", round(val_metrics["recall@20"], 4))  # Prints validation Recall@20.
-    print("  NDCG@10   =", round(val_metrics["ndcg@10"], 4))  # Prints validation NDCG@10.
-    print("  NDCG@20   =", round(val_metrics["ndcg@20"], 4))  # Prints validation NDCG@20.
+    print("Recall@10=", format_trunc_6(val_metrics["recall@10"]))
+    print("  Recall@20 =", format_trunc_6(val_metrics["recall@20"]))  # Prints validation Recall@20.
+    print("  NDCG@10   =", format_trunc_6(val_metrics["ndcg@10"]))  # Prints validation NDCG@10.
+    print("  NDCG@20   =", format_trunc_6(val_metrics["ndcg@20"]))  # Prints validation NDCG@20.
     print("Test Metrics")  # Header for test output.
-    print("  Recall@10 =", round(test_metrics["recall@10"], 4))  # Prints test Recall@10.
-    print("  Recall@20 =", round(test_metrics["recall@20"], 4))  # Prints test Recall@20.
-    print("  NDCG@10   =", round(test_metrics["ndcg@10"], 4))  # Prints test NDCG@10.
-    print("  NDCG@20   =", round(test_metrics["ndcg@20"], 4))  # Prints test NDCG@20.
+    print("  Recall@10 =", format_trunc_6(test_metrics["recall@10"]))  # Prints test Recall@10.
+    print("  Recall@20 =", format_trunc_6(test_metrics["recall@20"]))  # Prints test Recall@20.
+    print("  NDCG@10   =", format_trunc_6(test_metrics["ndcg@10"]))  # Prints test NDCG@10.
+    print("  NDCG@20   =", format_trunc_6(test_metrics["ndcg@20"]))  # Prints test NDCG@20.
 
 if __name__ == "__main__":  # Runs this block only when evaluate.py is executed directly.
     args = parse_args()  # Reads command-line arguments (or defaults) into args object.

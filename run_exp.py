@@ -71,10 +71,10 @@ def parse_eval_metrics(output_text):
 
 def main(args):
     grid = {  # Defines ablation values for each hyperparameter you want to vary.
-        "num_blocks": [1,2,3],  # Try different transformer block counts.
-        "hidden_units": [64,128,256],  # Try different embedding/hidden sizes.
-        "num_heads": [1,2,4],  # Try different attention head counts.
-        "maxlen": [50,100,200],  # Try different input sequence lengths.
+        "num_blocks": [1,3],  # Try different transformer block counts.
+        "hidden_units": [64,256],  # Try different embedding/hidden sizes.
+        "num_heads": [1],  # Try different attention head counts.
+        "maxlen": [50],  # Try different input sequence lengths.
     }
 
 
@@ -115,6 +115,13 @@ def main(args):
             run_id += 1  # Increments run number.
 
             cfg = dict(zip(grid_keys, combo))  # Converts tuple combo into named config dictionary.
+            print(
+                f"Run {run_id}/{total_runs} | "
+                f"num_blocks={cfg['num_blocks']}, "
+                f"hidden_units={cfg['hidden_units']}, "
+                f"num_heads={cfg['num_heads']}, "
+                f"maxlen={cfg['maxlen']}"
+            )
 
             ckpt_name = f"sasrec_run_{run_id}.pt"  # Creates unique checkpoint filename per run.
 
@@ -185,6 +192,23 @@ def main(args):
                 parsed_metrics["test_ndcg@20"],
             ])
             f.flush()
+            if eval_exit_code == 0:
+                print(
+                    "  Val  | "
+                    f"Recall@10={parsed_metrics['val_recall@10']}, "
+                    f"Recall@20={parsed_metrics['val_recall@20']}, "
+                    f"NDCG@10={parsed_metrics['val_ndcg@10']}, "
+                    f"NDCG@20={parsed_metrics['val_ndcg@20']}"
+                )
+                print(
+                    "  Test | "
+                    f"Recall@10={parsed_metrics['test_recall@10']}, "
+                    f"Recall@20={parsed_metrics['test_recall@20']}, "
+                    f"NDCG@10={parsed_metrics['test_ndcg@10']}, "
+                    f"NDCG@20={parsed_metrics['test_ndcg@20']}"
+                )
+            else:
+                print("  Metrics unavailable (train/eval failed for this run).")
             print(f"Run {run_id}/{total_runs} done")
     print("\nAll experiment runs finished.")  # Prints completion message after loop ends.
     print("Results CSV saved at:", result_csv_path)  # Prints where summary CSV is stored.

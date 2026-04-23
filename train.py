@@ -8,6 +8,8 @@ import torch
 from data import MovieLensDataset
 from model import SASRec
 
+from torch.utils.data import DataLoader, TensorDataset
+
 
 def set_seed(seed: int) -> None:
     random.seed(seed)
@@ -17,11 +19,74 @@ def set_seed(seed: int) -> None:
         torch.cuda.manual_seed_all(seed)
 
 
-def sample_negative_items(pos_items: torch.Tensor, item_num: int, device: torch.device) -> torch.Tensor:
-    neg_items = torch.randint(1, item_num + 1, size=pos_items.shape, device=device)
-    # Keep padding aligned: if target position is padding (0), set negative to 0 too.
-    neg_items[pos_items == 0] = 0
+# def sample_negative_items(pos_items: torch.Tensor, item_num: int, device: torch.device) -> torch.Tensor:
+#     neg_items = torch.randint(1, item_num + 1, size=pos_items.shape, device=device)
+#     # Keep padding aligned: if target position is padding (0), set negative to 0 too.
+#     neg_items[pos_items == 0] = 0
+#     return neg_items
+
+
+# def sample_negative_items(pos_items,seq_items,item_num,device):
+#     """
+#     User-aware negative sampling (prefix-aware):
+#     - For each user row, collect movies already seen in the input sequence (non-zero IDs).
+#     - For each valid target position (pos_items != 0), sample a random movie ID
+#       that is NOT in seen set and NOT equal to the positive target.
+#     - Keep padding positions as 0.
+#     """
+#     # Start with all zeros; we will fill valid positions.
+#     neg_items = torch.zeros_like(pos_items, device=device)
+#     batch_size, seq_len = pos_items.shape
+#     for i in range(batch_size):
+#         # Movies already present in this user's input sequence prefix.
+#         # We ignore 0 because 0 is padding, not a real movie.
+#         seen = set(seq_items[i][seq_items[i] != 0].tolist())
+#         for j in range(seq_len):
+#             # If this target position is padding, keep negative as 0.
+#             if pos_items[i, j].item() == 0:
+#                 neg_items[i, j] = 0
+#                 continue
+#             pos_id = pos_items[i, j].item()
+#             # Re-sample until we get an item that is not already seen
+#             # and not equal to the positive target.
+#             while True:
+#                 neg_id = random.randint(1, item_num)
+#                 if (neg_id not in seen) and (neg_id != pos_id):
+#                     neg_items[i, j] = neg_id
+#                     break
+#     return neg_items
+
+
+def sample_negative_items(pos_items, user_histories_batch, item_num, device):
+    """
+    SASRec-style negative sampling:
+    - For each user row and each valid target position:
+      sample random item from [1, item_num]
+      reject it if:
+        (a) item is in that user's full interaction history
+        (b) item equals current positive target
+    - Keep padding positions (pos == 0) as 0.
+    """
+    neg_items = torch.zeros_like(pos_items, device=device)
+    batch_size, seq_len = pos_items.shape
+    for i in range(batch_size):
+        seen_items = user_histories_batch[i]  # set of all items this user has interacted with
+        for j in range(seq_len):
+            pos_id = int(pos_items[i, j].item())
+            # Padding position -> keep 0
+            if pos_id == 0:
+                neg_items[i, j] = 0
+                continue
+            # Rejection sampling until valid negative found
+            while True:
+                neg_id = random.randint(1, item_num)
+                if (neg_id not in seen_items) and (neg_id != pos_id):
+                    neg_items[i, j] = neg_id
+                    break
     return neg_items
+
+
+
 
 
 def parse_args():
@@ -108,7 +173,17 @@ def train(args):
         maxlen=args.maxlen,
     )
 
-    train_loader = dataset.get_loader("train", args.batch_size)
+    # Build train loader with row indices so each batch row can map to user history.
+    # This lets us use the correct full user history set for negative sampling.
+    train_X = torch.tensor(dataset.splits["train"][0], dtype=torch.int64)
+    train_y = torch.tensor(dataset.splits["train"][1], dtype=torch.int64)
+    train_idx = torch.arange(train_X.size(0), dtype=torch.int64)  # row id of each training sample
+    train_loader = DataLoader(
+        TensorDataset(train_X, train_y, train_idx),  # returns (seq, pos, row_idx)
+        batch_size=args.batch_size,
+        shuffle=True,
+    )
+
     val_loader = dataset.get_loader("val", args.batch_size)
 
     # Number of items (excluding padding id 0).
@@ -141,13 +216,20 @@ def train(args):
         epoch_loss = 0.0
         num_batches = 0
 
-        for seq, pos in train_loader:
+        for seq, pos, row_idx in train_loader:
             # Move batch to same device as model.
             seq = seq.to(device)
             pos = pos.to(device)
 
             # Sample negatives with same shape as pos.
-            neg = sample_negative_items(pos_items=pos, item_num=item_num, device=device)
+            # Get full interacted-item set for each row/user in this batch.
+            batch_histories = [dataset.user_histories[i] for i in row_idx.tolist()]
+            neg = sample_negative_items(
+                pos_items=pos,
+                user_histories_batch=batch_histories,  # full user history exclusion
+                item_num=item_num,
+                device=device,
+            )
 
             # Forward pass.
             hidden = model(seq)

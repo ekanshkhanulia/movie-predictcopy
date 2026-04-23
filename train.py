@@ -67,6 +67,7 @@ def validate(model, val_loader, topk=(10, 20)):
         # Get scores for all items.
         hidden = model(seq)
         logits = model.predict_all_items(hidden)  # [batch_size, item_num + 1]
+        logits = torch.nan_to_num(logits, nan=-1e9, posinf=1e9, neginf=-1e9)
 
         # Do not rank padding id=0.
         logits[:, 0] = -1e9
@@ -76,6 +77,7 @@ def validate(model, val_loader, topk=(10, 20)):
 
         # Rank = how many items have score >= true item score (1 is best).
         ranks = (logits >= target_scores).sum(dim=1)
+        ranks = torch.clamp(ranks, min=1)
 
         for k in topk:
             hits = (ranks <= k).float()

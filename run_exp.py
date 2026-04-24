@@ -71,10 +71,10 @@ def parse_eval_metrics(output_text):
 
 def main(args):
     grid = {  # Defines ablation values for each hyperparameter you want to vary.
-        "num_blocks": [1,3],  # Try different transformer block counts.
-        "hidden_units": [64,256],  # Try different embedding/hidden sizes.
-        "num_heads": [1],  # Try different attention head counts.
-        "maxlen": [50],  # Try different input sequence lengths.
+        "num_blocks": [1,2,3],  # Try different transformer block counts.
+        "hidden_units": [64,128,256],  # Try different embedding/hidden sizes.
+        "num_heads": [1,2,4],  # Try different attention head counts.
+        "maxlen": [50,100,200],  # Try different input sequence lengths.
     }
 
 

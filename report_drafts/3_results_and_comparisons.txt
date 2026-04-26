@@ -1,0 +1,245 @@
+================================================================
+SECTION 3 — Results & Comparisons
+================================================================
+
+Length target: ~0.5 to 1 page in LNCS / ACM column format.
+Should consist mostly of tables with a few short paragraphs of
+factual description (no analysis - analysis goes to Section 4).
+
+Notes for typesetting:
+  - All tables are formatted using booktabs (\toprule, \midrule,
+    \bottomrule) for a clean LNCS / ACM look.
+  - Numerical placeholders shown as <FILL: ...>. Replace with the
+    actual numbers from terminal output / ablation_results.csv.
+  - All numbers in the ablation table (Table 3) come from the
+    terminal logs that were copied into CHANGE_LOG Chapters 8,
+    10, and 12. Cross-check before submission.
+  - Final model is K = 1 (the K = 100 attempt was reverted - see
+    Section 4.3 and CHANGE_LOG Chapter 12).
+  - Figures are optional; a single training-curve plot for the
+    final configuration would be a nice add if there is room.
+
+----------------------------------------------------------------
+PROSE — opening paragraph (factual description, no analysis)
+----------------------------------------------------------------
+
+We report results on the MovieLens 1M test split using the
+full-ranking evaluation protocol, in which the held-out next item
+is ranked against the entire item catalogue with all
+training-history items masked from each user's candidate set.
+Validation results are reported under the same protocol.
+Following the assignment specification, we use Recall@10,
+Recall@20, NDCG@10, and NDCG@20 as metrics. All results below
+are produced by the configuration selected in Section~2.3 (two
+Transformer blocks, $128$ hidden units, four attention heads,
+maximum sequence length $50$, dropout $0.2$, learning rate
+$10^{-3}$, Adam with $\beta_2 = 0.98$ and no weight decay,
+gradient clipping at $5.0$, one negative item per position with
+training-history exclusion, $50$ epochs maximum with early
+stopping at patience $5$, batch size $128$, seed $42$). All
+numbers are reported to four decimal places.
+
+----------------------------------------------------------------
+TABLE 1 — Final model performance on val and test
+----------------------------------------------------------------
+
+\begin{table}[h]
+\centering
+\caption{SASRec performance on MovieLens 1M, full-ranking
+evaluation. Final configuration as described in Section~2.3.}
+\label{tab:final}
+\begin{tabular}{lcccc}
+\toprule
+Split & Recall@10 & Recall@20 & NDCG@10 & NDCG@20 \\
+\midrule
+Validation & 0.053198 & 0.083692 & 0.026540 & 0.034189 \\
+Test       & 0.041763 & 0.075074 & 0.020831 & 0.029183 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+----------------------------------------------------------------
+PROSE — table 1 description (one short paragraph)
+----------------------------------------------------------------
+
+Table~\ref{tab:final} summarises the final performance. The model
+achieves a validation NDCG@10 of $0.0265$ and a test NDCG@10 of
+$0.0208$. Test recall and NDCG are slightly lower than
+validation, consistent with the leave-one-out split having only a
+single held-out item per user and the test item being one
+position further into the future than the validation item. We
+note that under the sampled-100 evaluation protocol of the
+original SASRec paper [2], the same model would report
+substantially higher NDCG values; see Section~4 for a discussion
+of how the assignment-mandated ratings $\geq 4$ filter and the
+full-ranking evaluation protocol jointly account for the
+difference between our numbers and the published values.
+
+----------------------------------------------------------------
+TABLE 2 — Top-3 configurations from the architectural grid search
+----------------------------------------------------------------
+
+\begin{table}[h]
+\centering
+\caption{Top three configurations from the architectural grid
+search ranked by validation NDCG@10. Stage-1 fixed
+hyperparameters: dropout $=0.2$, lr $=10^{-3}$, batch size
+$=128$, epochs $=50$, patience $=5$, seed $=42$, Adam at PyTorch
+defaults with weight decay $10^{-4}$, single negative per
+position with full-history exclusion. The grid covered $3^4 = 81$
+configurations.}
+\label{tab:gridsearch}
+\begin{tabular}{lccccc}
+\toprule
+Rank & blocks & hidden & heads & maxlen & val NDCG@10 \\
+\midrule
+1 & 2 & 128 & 4 & 50 & 0.026538 \\
+2 & 2 & 128 & 2 & 50 & 0.026366 \\
+3 & 2 & 128 & 1 & 50 & <FILL: from CSV> \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+NUMBERS TO PASTE IN:
+  - Rank 3 entry: pull from results/ablation_results.csv. Most
+    likely candidates are
+        blocks=2, hidden=128, heads=1, maxlen=50  (val 0.026073)
+                                                   per 1expphase
+                                                   txt
+        blocks=1, hidden=128, heads=4, maxlen=50  (val unknown,
+                                                   per the row
+                                                   you pasted
+                                                   earlier whose
+                                                   val column was
+                                                   truncated)
+    Either is fine - just keep the same set of three configs in
+    Section~4 when discussing capacity.
+
+----------------------------------------------------------------
+TABLE 3 — Training-side ablation on the best architecture
+----------------------------------------------------------------
+
+\begin{table}[h]
+\centering
+\caption{Training-side ablation on the best architecture (two
+blocks, $128$ hidden units, four heads, maxlen $50$). Each row
+applies the change cumulatively to the row above. The first
+three rows compose the final reported model. The final row
+records a tested-and-reverted variant (multi-negative BCE,
+discussed in Section~4.3).}
+\label{tab:ablation}
+\begin{tabular}{lcccc}
+\toprule
+Setting
+  & val R@10 & val NDCG@10 & test R@10 & test NDCG@10 \\
+\midrule
+\textbf{Grid-search baseline}
+  (Adam $\beta_2 = 0.999$, wd $= 10^{-4}$, $K = 1$,
+   full-history neg.\ exclusion)
+  & <FILL: 0.0524>
+  & 0.026538
+  & 0.043586
+  & 0.021524 \\
+\midrule
+$+$ Adam $\beta_2 = 0.98$, wd $= 0$
+  & 0.052535
+  & 0.026883
+  & 0.043420
+  & 0.021646 \\
+\midrule
+$+$ neg.\ sampler aligned with official SASRec
+   (excl.\ training history only)
+  \textbf{[final model]}
+  & 0.053198
+  & 0.026540
+  & 0.041763
+  & 0.020831 \\
+\midrule\midrule
+\textit{Tested and reverted:}
+  $+$ $K = 100$ negatives with averaged BCE
+  & 0.052369
+  & 0.026341
+  & 0.042757
+  & 0.021494 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+NUMBERS TO PASTE IN:
+  - The baseline val Recall@10 number marked <FILL: 0.0524> is
+    only quoted to three decimals in CHANGE_LOG Chapter 8
+    (\"~0.0524\"). Pull the exact value from the original grid
+    search CSV (results/ablation_results.csv, run_id 43) before
+    submission and replace.
+  - All other numbers in this table are exact and were copied
+    from CHANGE_LOG Chapters 8, 10, and 12 respectively. They
+    can be pasted as-is.
+
+----------------------------------------------------------------
+PROSE — short factual description of the ablation table
+----------------------------------------------------------------
+
+Table~\ref{tab:ablation} isolates the effect of each training-
+side decision made after the architectural grid search. The
+Adam optimiser change improved validation NDCG@10 by $1.3\%$
+relative to the grid-search baseline. Aligning the negative
+sampler with the official SASRec implementation closed a small
+val/test information leak in the negative sampler, which moved
+validation NDCG@10 back down by $1.3\%$ but produced numbers
+that are now defensible under the assignment's evaluation
+protocol. The final reported model corresponds to the third row
+of the table and is identical to the row of Table~\ref{tab:final}.
+A subsequent attempt to break the validation plateau by sampling
+$K = 100$ negatives per position is also shown for transparency;
+this attempt did not improve validation NDCG@10 and was reverted
+in the final model. The full discussion of why each row moves
+the way it does is deferred to Section~4.
+
+----------------------------------------------------------------
+OPTIONAL — TABLE 4: maxlen sensitivity (small, optional)
+----------------------------------------------------------------
+
+(If there is space, this small table shows that increasing
+maxlen beyond $50$ does not help, justifying the choice of
+maxlen $50$. Numbers from the 2nd-experiment-phase folder.)
+
+\begin{table}[h]
+\centering
+\caption{Effect of maximum sequence length on the rank-2
+architecture (blocks $= 1$, hidden $= 128$, heads $= 1$). Other
+hyperparameters held fixed at dropout $0.5$, lr $10^{-3}$,
+epochs $100$, patience $10$.}
+\label{tab:maxlen}
+\begin{tabular}{cccccc}
+\toprule
+maxlen & val R@10 & val R@20 & val NDCG@10 & test R@10 & test NDCG@10 \\
+\midrule
+50  & 0.052038 & 0.084023 & 0.026105 & 0.043254 & 0.021063 \\
+200 & 0.049055 & 0.079052 & 0.024974 & 0.043420 & 0.020810 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+----------------------------------------------------------------
+OPTIONAL — figure: training curve (if there is room)
+----------------------------------------------------------------
+
+A single line plot of validation NDCG@10 vs.\ epoch for the
+final configuration would be helpful in showing the
+early-convergence behaviour mentioned in Section~2.3. The
+y-axis should be NDCG@10, the x-axis should be epoch index, and
+a vertical line at the early-stopping epoch makes the
+convergence point visually clear. Use the per-epoch numbers
+printed by \texttt{train.py} (lines starting with
+\texttt{val\_ndcg@10}).
+
+----------------------------------------------------------------
+WHAT THIS SECTION DELIBERATELY LEAVES OUT (goes to Section 4)
+----------------------------------------------------------------
+
+  - Why each row in Table 3 moves the way it does
+    (full diagnosis)
+  - Discussion of the LR warmup negative result
+  - Discussion of the sqrt(d) embedding scaling negative result
+  - Why K = 100 was tested and what its mixed result means
+  - Future work / improvements

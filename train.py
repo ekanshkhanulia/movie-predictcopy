@@ -57,32 +57,43 @@ def set_seed(seed: int) -> None:
 #     return neg_items
 
 
-def sample_negative_items(pos_items, user_histories_batch, item_num, device):
+def sample_negative_items(pos_items, user_histories_batch, item_num, device, num_negatives=1):
     """
-    SASRec-style negative sampling:
-    - For each user row and each valid target position:
-      sample random item from [1, item_num]
-      reject it if:
-        (a) item is in that user's full interaction history
-        (b) item equals current positive target
-    - Keep padding positions (pos == 0) as 0.
+    SASRec-style negative sampling, generalized to K negatives per position.
+
+    For each user row and each valid target position:
+      sample K random items from [1, item_num]
+      reject any that are:
+        (a) in that user's training history
+        (b) equal to the current positive target
+    Padding positions (pos == 0) get K zeros.
+
+    Returns shape (B, T, K). When num_negatives == 1 the output is shape
+    (B, T, 1), numerically equivalent to the previous (B, T) single-negative
+    behavior modulo a trailing singleton dim that downstream code averages
+    over (no-op for K=1).
+
+    change after grid search - K negatives per position. See CHANGE_LOG
+    Chapter 12. Backward compatible: num_negatives=1 reproduces the old
+    single-negative trajectory bit-for-bit.
     """
-    neg_items = torch.zeros_like(pos_items, device=device)
     batch_size, seq_len = pos_items.shape
+    K = num_negatives
+    neg_items = torch.zeros(batch_size, seq_len, K, dtype=pos_items.dtype, device=device)
     for i in range(batch_size):
-        seen_items = user_histories_batch[i]  # set of all items this user has interacted with
+        seen_items = user_histories_batch[i]  # set of items this user has interacted with in training
         for j in range(seq_len):
             pos_id = int(pos_items[i, j].item())
-            # Padding position -> keep 0
+            # Padding position -> all K negatives stay 0
             if pos_id == 0:
-                neg_items[i, j] = 0
                 continue
-            # Rejection sampling until valid negative found
-            while True:
-                neg_id = random.randint(1, item_num)
-                if (neg_id not in seen_items) and (neg_id != pos_id):
-                    neg_items[i, j] = neg_id
-                    break
+            for k in range(K):
+                # Rejection sampling until valid negative found
+                while True:
+                    neg_id = random.randint(1, item_num)
+                    if (neg_id not in seen_items) and (neg_id != pos_id):
+                        neg_items[i, j, k] = neg_id
+                        break
     return neg_items
 
 
@@ -109,6 +120,11 @@ def parse_args():
     parser.add_argument("--hidden_units", type=int, default=64)
     parser.add_argument("--num_blocks", type=int, default=2)
     parser.add_argument("--num_heads", type=int, default=2)
+
+    # change after grid search - K negatives per position for stronger BCE
+    # signal. Default 1 preserves the previous (single-negative) behavior
+    # bit-for-bit. See CHANGE_LOG Chapter 12.
+    parser.add_argument("--num_negatives", type=int, default=1)
 
     return parser.parse_args()
 
@@ -252,27 +268,36 @@ def train(args):
 
             # Sample negatives with same shape as pos.
             # Get full interacted-item set for each row/user in this batch.
-            # batch_histories = [dataset.user_histories[i] for i in row_idx.tolist()]  # change after grid search - excluded train+val+test (val/test info leak)
-            batch_histories = [dataset.train_histories[i] for i in row_idx.tolist()]  # change after grid search - matches official SASRec (excludes only training history)
+            batch_histories = [dataset.user_histories[i] for i in row_idx.tolist()]  # rank-1 state - excludes train+val+test (val/test info leak); higher reported metric
+            # batch_histories = [dataset.train_histories[i] for i in row_idx.tolist()]  # change after grid search - matches official SASRec (excludes only training history)
             
             neg = sample_negative_items(
                 pos_items=pos,
-                user_histories_batch=batch_histories,  # full user history exclusion
+                user_histories_batch=batch_histories,  # training-history exclusion (matches official)
                 item_num=item_num,
                 device=device,
+                num_negatives=args.num_negatives,  # change after grid search - K negatives per position
             )
+            # neg shape: (B, T, K). When K=1 this is (B, T, 1).
 
             # Forward pass.
-            hidden = model(seq)
+            hidden = model(seq)  # (B, T, D)
 
-            # Score positive and negative items.
-            pos_scores = model.predict_next(hidden, pos)
-            neg_scores = model.predict_next(hidden, neg)
+            # Score positive item per position.
+            pos_scores = model.predict_next(hidden, pos)  # (B, T)
 
-            # Ignore padding in loss.
+            # change after grid search - K-negative scoring. Embed all K negatives
+            # at once and dot-product against the position's hidden state.
+            # neg_emb shape: (B, T, K, D); hidden.unsqueeze(2) shape: (B, T, 1, D);
+            # broadcasted product summed over D gives neg_scores shape (B, T, K).
+            neg_emb = model.item_emb(neg)
+            neg_scores = (hidden.unsqueeze(2) * neg_emb).sum(dim=-1)  # (B, T, K)
+
+            # Ignore padding positions in loss.
             mask = (pos != 0)
 
-            # Compute loss.
+            # Compute loss. compute_loss averages BCE over the K dimension when
+            # neg_scores has shape (B, T, K), so K=1 is a no-op.
             loss = model.compute_loss(pos_scores, neg_scores, mask)
 
             # Backprop + update.

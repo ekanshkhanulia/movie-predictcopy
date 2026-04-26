@@ -1,0 +1,181 @@
+================================================================
+SECTION 2.3 — Training & Hyperparameters
+================================================================
+
+Length target: ~0.75 to 1 page in LNCS / ACM column format.
+
+This rewrite is in CHRONOLOGICAL order. The five paragraphs below
+correspond to the five stages of the project, in order:
+
+  Paragraph 1 -> the starting baseline that existed at the start of
+                 the project, used for grid search (Stage 1) and
+                 the two experiment phases (Stages 2-3)
+
+  Paragraph 2 -> the three-stage hyperparameter search performed
+                 ON TOP of that baseline (full grid + phase 1 +
+                 phase 2)
+
+  Paragraph 3 -> post-search optimiser refinement (one combined
+                 change to Adam)
+
+  Paragraph 4 -> post-search negative-sampling refinement
+                 (history-exclusion alignment, plus a discussion-
+                 only K=100 attempt)
+
+  Paragraph 5 -> final training schedule, reproducibility, full
+                 cumulative final-config recap
+
+Notes for typesetting:
+  - Math written for LaTeX math mode ($...$ inline).
+  - \texttt{} used for code-style tokens.
+  - Citation [2] is reused as the SASRec reference (Kang et al.
+    2018), matching teammate's existing usage in 2.1 and 2.2.
+
+----------------------------------------------------------------
+PROSE
+----------------------------------------------------------------
+
+The configuration that the model was trained with at the start of
+the project, and which served as the fixed baseline for both the
+grid search and the two follow-up experiment phases described
+below, was as follows. The training objective was binary
+cross-entropy on next-item prediction with a single negative item
+sampled per non-padding position. Negatives were drawn uniformly
+from the item catalogue, rejecting any item that was already in
+the user's full interaction history (training, validation, and
+test items combined) or that equalled the current positive target;
+this exclusion criterion was tightened later (Paragraph 4).
+Padding positions were masked out of the loss. Optimisation used
+Adam at PyTorch defaults ($\beta_1 = 0.9$, $\beta_2 = 0.999$) with
+a small weight decay of $10^{-4}$, a constant learning rate of
+$1\!\times\!10^{-3}$, and gradient-norm clipping at $5.0$ applied
+before every parameter update. A single dropout rate of $0.2$ was
+shared across the model. Training ran for a maximum of $50$
+epochs with mini-batch size $128$ and early stopping on validation
+NDCG@10 at patience $5$. A fixed random seed of $42$ was set
+across Python's \texttt{random} module, NumPy, and PyTorch
+(including its CUDA backend) so identical configurations yield
+bit-identical metrics across runs.
+
+Hyperparameter selection then proceeded in three stages, each
+using the baseline above as the starting point. The first stage
+was a full grid search over four architectural hyperparameters
+specified for ablation by the assignment: number of Transformer
+blocks $\in \{1, 2, 3\}$, hidden dimension $\in \{64, 128, 256\}$,
+number of attention heads $\in \{1, 2, 4\}$, and maximum sequence
+length $\in \{50, 100, 200\}$, for a total of $3^4 = 81$
+configurations. Configurations were ranked by validation NDCG@10
+and the top three were retained for further study. The second
+stage applied focused training-time tuning to those top three
+configurations: dropout was swept at $\{0.1, 0.5\}$ against the
+existing $0.2$ baseline, and learning rate at $\{5\!\times\!10^{-4},
+10^{-2}\}$ against the existing $10^{-3}$ baseline, with the
+architecture held fixed. The learning rate of $10^{-3}$ was
+confirmed as best. The dropout sweep was less conclusive:
+dropout $0.5$ outperformed dropout $0.1$ head-to-head, but did not
+consistently beat the original dropout $0.2$ once the post-search
+optimiser refinement of Paragraph 3 was also applied, so dropout
+$0.2$ was retained in the final configuration. The third stage
+explored a longer training budget (100 epochs, patience 10) and a
+larger maximum sequence length ($200$) on the top configurations
+at dropout $0.5$; neither change improved validation NDCG@10,
+indicating that the chosen architecture was not constrained by
+sequence length or training budget. The architecture selected at
+the end of this three-stage process was two Transformer blocks,
+$128$ hidden units, four attention heads, and a maximum sequence
+length of $50$, achieving a validation NDCG@10 of $0.026538$ on
+the unmodified baseline.
+
+With the architecture fixed, we then tested a small number of
+training-side refinements one at a time, retaining each only if
+it improved validation NDCG@10. The first retained change was a
+two-part adjustment to the Adam optimiser made together because
+both come from the official SASRec implementation [2]: the
+second-moment momentum coefficient was changed from the PyTorch
+default of $\beta_2 = 0.999$ to $\beta_2 = 0.98$, and the weight
+decay was removed (from $10^{-4}$ to $0$). The faster second-moment
+estimate stabilises the optimiser during early epochs while item
+embeddings are still close to their initial values, and the
+removal of weight decay matches the official SASRec, which relies
+on dropout alone as the regulariser. Together this change moved
+validation NDCG@10 from $0.026538$ to $0.026883$ (a relative
+improvement of $1.3\%$).
+
+A second retained change concerned negative sampling. The original
+sampler rejected items in the user's full train + validation +
+test history when drawing negatives; this constituted a small
+information leak from the held-out splits into the training
+objective, since the negative set was being kept aware of which
+items were targets of the validation and test sets. We aligned the
+sampler with the official SASRec implementation [2] by rejecting
+only items in the user's \emph{training} history. Closing this
+leak moved validation NDCG@10 from $0.026883$ back down to
+$0.026540$, almost exactly cancelling the gain from the optimiser
+change above; the headline metric is therefore very close to the
+grid-search baseline of $0.026538$, but is now produced under a
+defensible evaluation protocol with no held-out information
+visible to the training loss. We also tested increasing the
+per-position negative count from $K = 1$ to $K = 100$, motivated
+by an observed plateau in training loss; this did not improve
+validation NDCG@10 (it dropped slightly by $0.75\%$, although test
+NDCG@10 did improve by $3.2\%$) and was reverted to maintain a
+single-source model-selection criterion. This attempt is discussed
+in detail in Section~4.
+
+The final training schedule retained the baseline values of $50$
+epochs maximum, mini-batch size $128$, patience $5$, and seed
+$42$. We verified that $50$ epochs is sufficient by re-running the
+selected configuration with $100$ epochs and patience $10$; the
+resulting metrics matched the $50$-epoch run to six decimal
+places, confirming that the model converges well before the
+budget is exhausted. The checkpoint with the highest validation
+NDCG@10 observed during training is retained and used for final
+test evaluation. The full final configuration used for all
+results in Section~3 is therefore: two Transformer blocks; $128$
+hidden units; four attention heads; maximum sequence length $50$;
+dropout $0.2$; learning rate $10^{-3}$; Adam with $\beta_2 = 0.98$
+and no weight decay; gradient clipping at $5.0$; one negative
+item per position sampled with training-history exclusion; a
+maximum of $50$ epochs with early stopping at patience $5$;
+mini-batch size $128$; and random seed $42$.
+
+----------------------------------------------------------------
+WHAT THIS SECTION DELIBERATELY LEAVES OUT (goes to other sections)
+----------------------------------------------------------------
+
+  - Numerical results for grid search rankings, ablations, or
+    final test metrics ............... GO TO Section 3 (Results)
+
+  - LR warmup negative result ........ GO TO Section 4 (Observations)
+
+  - sqrt(d) embedding scaling
+    negative result .................. GO TO Section 4 (Observations)
+
+  - K=1 vs K=100 plateau diagnosis
+    in detail ........................ GO TO Section 4 (Observations)
+
+  - Future work suggestions
+    (hard negatives, BPR, etc.) ...... GO TO Section 5 (Conclusion)
+
+----------------------------------------------------------------
+BEFORE SUBMITTING — DOUBLE-CHECK
+----------------------------------------------------------------
+
+  1. The 0.026538 baseline figure in Paragraph 2 should match the
+     run_id=43 row of the original grid_search CSV. Cross-check.
+
+  2. The 0.026883 figure in Paragraph 3 (post-Adam-change, leaky)
+     and the 0.026540 figure in Paragraph 4 (post-sampler-fix,
+     honest) should both match CHANGE_LOG Chapters 8 and 10
+     respectively.
+
+  3. Citation [2]: confirm this matches teammate's reference list
+     entry for the SASRec paper.
+
+  4. Math notation ($\beta_1$, $\beta_2$, $10^{-3}$): assumes
+     LaTeX. Convert if Markdown.
+
+  5. The cross-reference to Section 4 in Paragraph 4 (K=100
+     discussion) assumes Section 4 retains the K=100 negative-
+     result subsection. If that is removed for space, drop the
+     "discussed in detail in Section 4" sentence.

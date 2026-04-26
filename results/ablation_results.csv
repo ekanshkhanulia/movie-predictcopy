@@ -1,2 +1,2 @@
 run_id,num_blocks,hidden_units,num_heads,maxlen,train_exit_code,eval_exit_code,val_recall@10,val_recall@20,val_ndcg@10,val_ndcg@20,test_recall@10,test_recall@20,test_ndcg@10,test_ndcg@20
-1,2,128,4,50,0,0,0.052204,0.082863,0.0263,0.034045,0.042757,0.075074,0.020484,0.028606
+1,2,128,4,50,0,0,0.052535,0.086509,0.026883,0.035402,0.04342,0.0764,0.021646,0.029884

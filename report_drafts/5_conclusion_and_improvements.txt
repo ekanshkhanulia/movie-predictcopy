@@ -1,0 +1,104 @@
+================================================================
+SECTION 5 — Conclusion & Improvements
+================================================================
+
+Length target: ~0.25 to 0.5 page in LNCS / ACM column format.
+Should be a tight summary - what was built, headline numbers, and
+a forward-looking sentence. Heavy lifting on "what we'd do next"
+is already in Section 4.4; do not repeat it in full here.
+
+Notes for typesetting:
+  - Math written for LaTeX math mode ($...$ inline).
+  - Headline numbers are filled in from Table 1 of Section 3.
+  - Citation [2] reused as the SASRec reference.
+
+----------------------------------------------------------------
+PROSE
+----------------------------------------------------------------
+
+We presented a PyTorch implementation of SASRec [2] for the
+MovieLens 1M next-item recommendation task, and described the
+chronological process by which we arrived at the final
+configuration: an architectural grid search over $3^4 = 81$
+combinations, followed by training-time tuning of dropout and
+learning rate on the top three architectures, followed by a
+series of single-change ablations on the best architecture
+covering optimiser settings, negative sampling, and several
+training-time tricks. The selected model -- two Transformer
+blocks, $128$ hidden units, four attention heads, maximum
+sequence length $50$, dropout $0.2$, learning rate $10^{-3}$,
+Adam with $\beta_2 = 0.98$ and no weight decay, gradient
+clipping at $5.0$, and one negative item per position drawn with
+training-history exclusion -- achieves a test NDCG@10 of
+$0.0208$ and a test Recall@10 of $0.0418$ under the
+full-ranking evaluation protocol mandated by the assignment.
+
+The most useful methodological observations from the project
+were the negative ones. Two tricks that are standard in related
+literature, linear learning-rate warmup and $\sqrt{d}$ embedding
+scaling, turned out to interact badly with our PyTorch defaults
+and short training budget; both were discarded after one-change
+ablations and are documented as negative results rather than
+included in the final model. A diagnosed plateau in the BCE
+training loss motivated an attempt to sample $K = 100$ negatives
+per position rather than $K = 1$, which also failed to improve
+validation NDCG@10 on this small catalogue, suggesting that the
+limiting factor is the \emph{difficulty} of the negatives rather
+than their count. The most promising directions for further
+improvement, listed in Section~4.4, are hard negative mining
+(popularity- or model-based), a BPR pairwise ranking loss, and
+correctly-masked attention over padding tokens that does not
+fall back to the current zero-out workaround.
+
+We note that the absolute NDCG values reported above are not
+directly comparable to those quoted in the original SASRec paper
+[2]. Two assignment-mandated choices make the task strictly
+harder in our setting: the rating $\geq 4$ binarisation removes
+implicit-feedback signal that the original work uses, and the
+full-ranking evaluation protocol scores the held-out item
+against all $\sim\!3{,}706$ catalogue items rather than against
+$100$ sampled negatives. Section~4 discusses this comparison in
+more detail.
+
+----------------------------------------------------------------
+ONE-PARAGRAPH ALTERNATIVE (if you need to cut harder for space)
+----------------------------------------------------------------
+
+We presented a PyTorch implementation of SASRec [2] for
+next-item recommendation on MovieLens 1M, selected through an
+$81$-cell architectural grid search and a series of single-change
+training-side ablations. The final model achieves a test
+NDCG@10 of $0.0208$ and a test Recall@10 of $0.0418$ under the
+full-ranking evaluation protocol. Our main methodological
+finding is that, on a small-catalogue sequential dataset,
+training-time decisions (the negative-sampling protocol and a
+pair of Adam hyperparameters) influence final performance more
+than architectural choices, and that several literature-standard
+training tricks (LR warmup, $\sqrt{d}$ scaling, increased
+negative count) interact badly with our short training budget
+and small item catalogue; supporting evidence is in Section~4.
+Hard negative mining, a pairwise ranking loss, and a properly-
+masked attention over padding tokens are the most promising
+directions for further work.
+
+----------------------------------------------------------------
+NUMBERS TO FILL IN
+----------------------------------------------------------------
+
+  Headline test NDCG@10 .......... 0.0208
+  Headline test Recall@10 ........ 0.0418
+
+  These come from the FINAL configuration (K = 1, post-Ch.10
+  honest baseline), same source as Table 1 in Section 3. Use
+  exactly the same numbers in both places to avoid inconsistency.
+
+----------------------------------------------------------------
+WHAT TO LEAVE OUT OF THIS SECTION
+----------------------------------------------------------------
+
+  - Detailed analysis of negative results
+    (already in Section 4.2 - do not repeat)
+  - Detailed K=1 vs K=100 diagnosis
+    (already in Section 4.3 - do not repeat)
+  - The full grid search top-3 table
+    (already in Section 3, Table 2)

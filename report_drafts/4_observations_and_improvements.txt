@@ -1,0 +1,219 @@
+================================================================
+SECTION 4 — Observations & Improvements
+================================================================
+
+Length target: ~1 to 1.25 pages in LNCS / ACM column format.
+This is the rubric's "Insights, challenges, and suggestions for
+improvement" section and is worth real marks. Each subsection below
+is a self-contained paragraph or two; cut whichever feels weakest
+if there is no room for all of them.
+
+Notes for typesetting:
+  - Math written for LaTeX math mode ($...$ inline).
+  - \texttt{} used for code-style tokens.
+  - Citations [2] reused as the SASRec reference.
+  - All numerical claims in Sections 4.2 and 4.3 are exact and
+    have been cross-checked against CHANGE_LOG Chapters 9, 11,
+    and 12. Each negative result below was tested against the
+    best validation NDCG@10 that was available at the time of
+    that experiment, which is why the baseline figure quoted in
+    each subsection is slightly different.
+
+----------------------------------------------------------------
+OPENING PARAGRAPH
+----------------------------------------------------------------
+
+This section discusses what we observed beyond the headline numbers.
+We focus on three threads. First, we trace why the final architecture
+selected by the grid search is at the size it is, rather than larger
+or smaller, and why extending the training budget beyond $50$ epochs
+did not help. Second, we report three design choices we tested in
+isolation and either discarded or kept under careful caveats; these
+results clarify which Transformer-era tricks port cleanly to our
+PyTorch implementation of SASRec and which do not. Third, we describe
+a diagnosed training-loss plateau and the unsuccessful attempt to
+break it by increasing the negative-sample count, which led to the
+hard-negative-mining direction proposed in Section~4.4. Each
+subsection ends with a one-sentence takeaway in italics.
+
+----------------------------------------------------------------
+4.1 Architecture is not the bottleneck
+----------------------------------------------------------------
+
+The architectural grid search was conducted over $3^4 = 81$
+configurations (\#blocks $\in\{1,2,3\}$, hidden $\in\{64,128,256\}$,
+heads $\in\{1,2,4\}$, maxlen $\in\{50,100,200\}$). The top three
+configurations differ only in number of attention heads and number
+of blocks; all three use 128 hidden units and a maximum sequence
+length of 50. Larger hidden dimensions (256) did not improve
+validation NDCG@10, suggesting that the model is not capacity-limited
+on MovieLens 1M's ${\sim}3{,}706$-item catalogue. Longer sequences
+(maxlen 100, 200) also failed to improve over maxlen 50, which is
+consistent with the heavy-tailed distribution of user history lengths
+in MovieLens 1M: the median user has fewer than 50 positive
+interactions after the rating $\geq 4$ filter, so most of the
+additional positions in a length-200 sequence are pad tokens that
+must be masked anyway.
+
+We separately verified that the 50-epoch training budget is not the
+bottleneck either. Re-running the best configuration with 100 epochs
+and patience 10 produced metrics identical to the 50-epoch run to
+six decimal places, because the saved checkpoint is the one with the
+highest validation NDCG@10 ever observed and that peak is reached
+well before epoch 50.
+
+\textit{Takeaway: neither model size, sequence length, nor training
+length is the limiting factor; the bottleneck lies in the training
+signal itself.}
+
+----------------------------------------------------------------
+4.2 Negative results from training-side tweaks
+----------------------------------------------------------------
+
+We tested two training- and architecture-side tricks that are
+standard practice elsewhere in the Transformer literature and found
+them counterproductive in our setting. We document them here both to
+contextualise the design space we explored and to support the
+takeaway above.
+
+\textbf{Linear learning-rate warmup.} A 1000-step linear warmup of
+the learning rate, in the spirit of the original Transformer, was
+added on top of the post-grid-search baseline. Validation NDCG@10
+dropped by $6.8\%$ relative (from $0.026883$ to $0.025061$). The
+problem is one of scale: a 50-epoch run on our dataset contains
+roughly $50 \times 47 = 2{,}350$ optimiser steps in total, of which
+$1{,}000$ would be at a reduced learning rate -- about $42\%$ of the
+training budget. With patience $5$, the model was early-stopped
+before it could recover from the slow start. Warmup is meant to be
+$5{-}10\%$ of total training; copying the schedule from a paper that
+trains for $200{+}$ epochs without rescaling produces a warmup window
+much longer than the available budget. We reverted this change.
+
+\textbf{Item-embedding scaling by $\sqrt{d}$.} The original
+Transformer multiplies the input embedding by $\sqrt{d_{\text{model}}}$
+before adding positional embeddings, and the official SASRec
+implementation [2] adopts the same convention. Adding this scaling to
+our PyTorch port reduced validation NDCG@10 by $0.9\%$ (from
+$0.026540$ to $0.026300$) and degraded $7$ of $8$ headline metrics.
+The cause is an initialisation mismatch: TensorFlow's default
+embedding initialiser produces values with a small standard deviation
+(typically near $0.01$), so multiplying by $\sqrt{128} \approx 11.3$
+brings the item-embedding magnitude up to roughly the positional
+embedding's scale. PyTorch's default \texttt{nn.Embedding}
+initialisation uses $\mathcal{N}(0,1)$, which is already at unit
+scale, and multiplying by $11.3$ makes the item signal roughly an
+order of magnitude larger than the positional signal -- the opposite
+imbalance from what the trick is designed to correct. We reverted
+this change.
+
+\textit{Takeaway: tricks lifted from the official TensorFlow SASRec
+codebase or from the original Transformer paper sometimes interact
+badly with PyTorch defaults. They are worth testing, but should not
+be assumed to transfer.}
+
+----------------------------------------------------------------
+4.3 A diagnosed plateau, and an unsuccessful K=100 attempt
+----------------------------------------------------------------
+
+The most informative single experiment in our project was an
+attempt to break the validation plateau by sampling more negatives
+per position. We describe the diagnosis, the change, and the
+result honestly here, because the result was mixed and the lesson
+is in the mixture.
+
+With $K = 1$ negative per position, the per-epoch validation
+NDCG@10 trajectory peaks around epoch $17$ at approximately
+$0.0265$ and remains flat thereafter. Training loss saturates at
+approximately $0.88$ during the same window and does not decrease
+further. For a binary cross-entropy loss with sigmoid scores,
+$\log 2 \approx 0.693$ is the value of the loss when both the
+positive logit and the negative logit sit at zero -- i.e.\ when
+the model is making no decision at all. A plateau slightly above
+$\log 2$ indicates that, although the model is learning to push
+positives up modestly, it is not making useful progress on pushing
+negatives down.
+
+The hypothesised cause is that, with only ${\sim}3{,}706$
+candidate items and ${\sim}50{-}200$ items per user history, a
+uniformly sampled negative is overwhelmingly likely to be a
+"trivial" negative -- an item the user has zero interest in, that
+the model already scores low. With $K = 1$ each gradient step
+sees only one negative per position, and the optimiser barely
+has to push that negative below the positive. Increasing $K$
+exposes the model to many more negatives per step. We therefore
+tested $K = 100$, with the BCE loss averaged over the $K$
+dimension to keep the per-position negative scale balanced with
+the positive term.
+
+The empirical result was mixed rather than clean. Validation
+NDCG@10 \emph{drifted down} by $0.75\%$, from $0.026540$ to
+$0.026341$, and validation Recall@10 fell by $1.6\%$. Test
+metrics moved in the opposite direction at the top of the
+ranking: test NDCG@10 \emph{improved} by $3.2\%$ (from $0.020831$
+to $0.021494$) and test Recall@10 by $2.4\%$, while test top-20
+metrics moved down slightly. Because we are obliged to select the
+final model on validation NDCG@10 alone, $K = 100$ does not meet
+the selection criterion and was reverted; the final model uses
+$K = 1$. We document the result here rather than in Section~3
+because it is informative beyond the headline number.
+
+The interpretation is that simply sampling \emph{more} negatives
+of the same kind is insufficient to break the plateau on a
+catalogue this small. With only ${\sim}3{,}706$ items, even at
+$K = 100$ approximately ninety-five of every hundred draws are
+trivial negatives that contribute almost no gradient. The
+test-side improvement is suggestive of a small generalisation
+benefit (the contrastive signal is no longer dominated by the
+handful of negatives that happen to rank near val items at
+$K = 1$), but the validation drop is the metric we are obliged
+to optimise.
+
+\textit{Takeaway: increasing $K$ on uniform negatives is
+necessary but not sufficient. The negatives themselves need to
+be \emph{harder} -- popularity-based, neighbour-based, or
+model-aware -- before $K$ becomes a useful lever. This motivates
+the hard-negative-mining suggestion in Section~4.4.}
+
+----------------------------------------------------------------
+4.4 Suggestions for further improvement
+----------------------------------------------------------------
+
+Time and compute prevented us from testing the following directions,
+each of which is independently motivated by our observations and
+would be a natural next step.
+
+\textbf{Hard negative mining.} Sampling negatives from popular items
+or from items topically similar to the user's history (e.g.\ via
+co-occurrence) is well known to provide stronger gradients than
+uniform sampling and is a natural extension of the K = 100 result
+above. Whatever fraction of the $100$ negatives end up being
+informative under uniform sampling, hard mining would push that
+fraction toward $100\%$ at the cost of additional bookkeeping.
+
+\textbf{BPR (pairwise ranking) loss.} BCE optimises a pointwise
+calibration of scores, but our evaluation metrics (Recall@K, NDCG@K)
+are pure ranking metrics. A pairwise BPR loss directly optimises the
+score margin between positive and negative and is a closer match to
+the evaluation objective.
+
+\textbf{Properly masked attention over padding.} Our current
+implementation enables the causal attention mask but disables the
+\texttt{key\_padding\_mask}, because enabling it produces NaN logits
+on early positions of left-padded sequences (the row of the
+attention matrix at position $0$ has all keys masked, so
+$\mathrm{softmax}(-\infty)$ is undefined). A correct implementation
+would either use a "safe softmax" (substituting a finite default
+distribution when the mask covers all keys) or right-pad sequences
+at the data-loading layer. Either fix would prevent any attention
+weight from being placed on padding positions.
+
+\textbf{Cosine learning-rate decay.} A milder schedule than the
+linear warmup we tested (which failed for budget reasons described
+in Section~4.2) would be cosine decay over the full 50-epoch budget.
+This is sized correctly for our training run by construction and is
+known to provide modest improvements in similar settings without
+risking the early-stop interaction that hurt warmup.
+
+----------------------------------------------------------------
+END OF SECTION 4
+----------------------------------------------------------------

@@ -133,12 +133,36 @@ class SASRec(nn.Module):
     def compute_loss(self, pos_scores, neg_scores, mask):
         """
         Binary cross-entropy loss with negative sampling.
-        Padding positions are excluded from the loss using the mask (which is True at non-padding positions). 
+
+        Supports both single-negative and multi-negative cases:
+          - single:  pos_scores (B, T), neg_scores (B, T)
+          - multi :  pos_scores (B, T), neg_scores (B, T, K)
+
+        For the multi-negative case BCE is averaged over the trailing K
+        dimension so the per-position scale of the negative term matches the
+        positive term and the overall loss magnitude stays comparable to the
+        K=1 case.
+
+        Padding positions are excluded from the loss using the mask (which is
+        True at non-padding positions).
+
+        change after grid search - K negatives support. When K=1 this reduces
+        to the original single-negative computation. See CHANGE_LOG Chapter 12.
         """
         # Positive items are labeled 1, negatives are labeled 0
-        pos_loss = F.binary_cross_entropy_with_logits(pos_scores, torch.ones_like(pos_scores), reduction='none')
-        neg_loss = F.binary_cross_entropy_with_logits(neg_scores, torch.zeros_like(neg_scores), reduction='none')
-        
+        pos_loss = F.binary_cross_entropy_with_logits(
+            pos_scores, torch.ones_like(pos_scores), reduction='none'
+        )
+        neg_loss = F.binary_cross_entropy_with_logits(
+            neg_scores, torch.zeros_like(neg_scores), reduction='none'
+        )
+
+        # change after grid search - if neg_scores has an extra K dim, average
+        # over it so the per-position negative loss has the same shape as
+        # pos_loss. For K=1 this is mean over a singleton dim (no-op).
+        if neg_loss.dim() == pos_loss.dim() + 1:
+            neg_loss = neg_loss.mean(dim=-1)
+
         loss = (pos_loss + neg_loss)[mask]
         return loss.mean()
 

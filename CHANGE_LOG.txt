@@ -891,6 +891,348 @@ Lesson noted:
    TensorFlow's. We reverted the change."
 
 ============================================================
+CHAPTER 12 — Change 5: Multi-Negative BCE Loss
+              (sample K negatives per position instead of 1)
+============================================================
+
+Date: 2026-04-26
+
+Background and motivation:
+  After Chapter 10 (negative sampling matched to official
+  SASRec) and Chapter 11 (embedding scaling reverted), we
+  ran a direct train.py invocation with --epochs 100 and
+  --patience 10 to see the per-epoch validation trajectory
+  and confirm whether more training would help.
+
+  The trajectory revealed two important facts:
+
+    1. The model peaks early. Best val NDCG@10 hit at
+       roughly epoch 17 in the dropout=0.5 trial; the
+       run_exp default config (dropout=0.2) similarly
+       converges well before epoch 50. Doubling epochs and
+       patience produces literally identical numbers (down
+       to 6 decimal places) because the saved checkpoint is
+       always the best one seen so far, and no later epoch
+       beats the early peak.
+
+    2. Training loss flatlines around 0.88 from roughly
+       epoch 9 onward. For a binary cross-entropy loss with
+       sigmoid scores, 0.88 is suspiciously close to log(2)
+       ~= 0.693, indicating the model is barely
+       distinguishing positives from random negatives.
+
+  Combined with the fact that the user's grid search had
+  already swept architectural hyperparameters
+  (num_blocks in {1,2}, hidden_units in {64,128,256},
+  num_heads in {1,2,4}, maxlen in {50,100,200}) and the
+  best config was the LARGEST of the small-dataset choices
+  (num_blocks=2, hidden_units=128, num_heads=4, maxlen=50),
+  we concluded:
+
+      "The architecture isn't the bottleneck. Training
+       budget isn't the bottleneck. The training signal
+       itself is too weak."
+
+  i.e. the LOSS is starved of useful gradient information,
+  not the model.
+
+Diagnosis - why 1 negative per position is weak:
+  The current training loop samples ONE negative item per
+  position and computes:
+
+      loss_pos = BCE(score(pos), 1)
+      loss_neg = BCE(score(neg), 0)
+      loss     = (loss_pos + loss_neg) averaged over
+                 non-padding positions
+
+  With ~3,706 candidate items in MovieLens 1M and only
+  ~50-200 items in any user's history, a uniformly random
+  negative is almost always a "trivial negative" - an item
+  the user has zero interest in, that the model already
+  scores very low.
+
+  Each gradient step thus only sees ONE negative example
+  per position. The optimizer barely has to push that
+  negative below the positive, because the negative was
+  already low-scored to begin with. Result: the
+  discrimination boundary stays soft, and the model
+  plateaus.
+
+Proposed change (Change 5):
+  Sample K = 100 negatives per position instead of 1, and
+  average BCE loss over those K negatives:
+
+      loss_pos = BCE(score(pos), 1)
+      loss_neg = mean_k of BCE(score(neg_k), 0)
+      loss     = (loss_pos + loss_neg) averaged over
+                 non-padding positions
+
+  The "mean over K" keeps the per-position scale of
+  loss_neg comparable to loss_pos, so we don't accidentally
+  bias the loss toward the negative term and force every
+  score to -infinity. This is the standard formulation in
+  recommendation literature when using BCE with multiple
+  negatives.
+
+  Effect on the gradient:
+    - Each step now has 100 negative items contributing to
+      the per-position loss signal.
+    - Even if 95 of them are trivial, the remaining 5 hard
+      negatives provide a much stronger learning signal.
+    - As training progresses and "easy" negatives are
+      pushed down, the K=100 sample is statistically much
+      more likely to include hard cases than K=1.
+    - This is conceptually similar to sampled-softmax with
+      K=100 negatives, which is widely known to produce
+      much better embeddings than K=1 BCE.
+
+Why this is rubric-compliant (README.md, Section 3
+"Training and Optimization (20 points)"):
+  - "Train the model using the next-item prediction
+     objective"               -> still next-item prediction.
+  - "Use the Adam optimizer with appropriate learning
+     rate tuning or scheduling" -> unchanged.
+  - "Implement early stopping based on validation NDCG@10"
+     -> unchanged.
+  - "Use dropout and layer normalization appropriately"
+     -> unchanged.
+  - "Use negative sampling during training"
+     -> STILL using negative sampling. We only changed the
+     COUNT (1 -> K), not the mechanism.
+  - "appropriate ... tuning"
+     -> The number of negatives per positive is one of the
+     most important training-time tuning knobs in
+     recommendation models. This change is exactly the
+     "appropriate tuning" the rubric asks for.
+
+  Section 2 ("SASRec Model (20 points)") is untouched -
+  no model architecture change. Item embeddings,
+  positional embeddings, attention blocks, causal mask,
+  FFN, dropout, LayerNorm, and the prediction layer are
+  all unchanged. We only edit the loss aggregation in
+  compute_loss.
+
+  Verdict: 100% rubric-compliant. No violation.
+
+Code changes (with "// change after grid search" comments
+in the source files):
+
+  File: train.py
+  ---------------
+  (a) parse_args(): add CLI flag, default 1 (preserves
+      previous behavior bit-for-bit if not passed):
+          --num_negatives  int  default=1
+          # change after grid search - K negatives per position
+
+  (b) sample_negative_items(): generalize to K negatives.
+      Returns shape (B, T, K) instead of (B, T). When K=1
+      the output is shape (B, T, 1), numerically identical
+      to (B, T) modulo a trailing singleton dim.
+          # change after grid search - K negatives per position
+
+  (c) train loop: pass num_negatives into the sampler and
+      score K negatives per position. Negative scoring
+      uses model.item_emb(neg) to get (B, T, K, D) and
+      dot-products against hidden.unsqueeze(2).
+          # change after grid search - K-negative scoring
+
+  File: model.py
+  --------------
+  (d) compute_loss(): if neg_scores has one more dim than
+      pos_scores, average BCE over the trailing K dim.
+      For K=1 this is a no-op (averaging a singleton dim).
+          # change after grid search - K negatives support
+
+  File: run_exp.py
+  ----------------
+  (e) parse_args(): add --num_negatives  default 1.
+      Forward via --num_negatives in train_cmd list.
+          # change after grid search - K negatives passthrough
+
+Backward compatibility:
+  When --num_negatives is not passed, default = 1, and
+  every numerical operation reduces to the previous
+  (single-negative) implementation modulo trailing
+  singleton dims that don't affect any reduced quantity.
+
+  i.e. with the new code:
+      python run_exp.py --epochs 50
+  must produce numbers IDENTICAL to the Chapter 10 baseline
+  (val NDCG@10 = 0.026540, test NDCG@10 = 0.020831) down
+  to several decimal places.
+
+  This is the SANITY CHECK we run first, before the
+  actual experiment.
+
+Risk:
+  Low. No model architecture change. No new hyperparameter
+  in the model. The change is contained to training-time
+  loss computation. If results worsen, we revert by simply
+  not passing --num_negatives.
+
+Test plan:
+  Step 1 (sanity check, must match Chapter 10 baseline):
+      python run_exp.py --epochs 50
+    Expected:
+      Val  NDCG@10 = 0.026540
+      Test NDCG@10 = 0.020831
+    (any deviation here means the K=1 default path
+     differs from the original code - bug)
+
+  Step 2 (the experiment):
+      python run_exp.py --epochs 50 --num_negatives 100
+    Expected (hypothesis):
+      Val NDCG@10 in the 0.028 - 0.032 range
+      Training loss should drop noticeably below the
+      previous 0.88 plateau as the K=100 signal pushes
+      embeddings further apart.
+
+Config to test (same architecture as Chapters 8-11 for
+clean comparison):
+  num_blocks    = 2
+  hidden_units  = 128
+  num_heads     = 4
+  maxlen        = 50
+  epochs        = 50
+  dropout_rate  = 0.2  (run_exp.py default)
+  lr            = 1e-3
+  patience      = 5
+  num_negatives = 100  (the experiment value)
+
+Baseline to beat:
+  Chapter 10 baseline:
+    val  NDCG@10 = 0.026540
+    test NDCG@10 = 0.020831
+
+Result:
+  Step 1 (sanity check, K = 1 default path):
+      python run_exp.py --epochs 50
+    PASS - numbers exactly matched the Chapter 10 baseline
+    to all reported decimal places (val NDCG@10 = 0.026540,
+    test NDCG@10 = 0.020831). This confirms that the K
+    generalization is bit-identical when K = 1, so the new
+    code is safe to use as a drop-in replacement.
+
+  Step 2 (the actual experiment, K = 100):
+      python run_exp.py --epochs 50 --num_negatives 100
+      Run 1/1 | num_blocks=2, hidden_units=128, num_heads=4,
+               maxlen=50
+        Val  | Recall@10=0.052369, Recall@20=0.082863,
+               NDCG@10  =0.026341, NDCG@20  =0.033975
+        Test | Recall@10=0.042757, Recall@20=0.072422,
+               NDCG@10  =0.021494, NDCG@20  =0.028954
+
+Delta vs Chapter 10 baseline (K = 1):
+  Validation:
+    Delta val  Recall@10 = -0.000829  (-1.6%)
+    Delta val  Recall@20 = -0.000829  (-1.0%)
+    Delta val  NDCG@10   = -0.000199  (-0.75%)
+    Delta val  NDCG@20   = -0.000214  (-0.6%)
+
+  Test:
+    Delta test Recall@10 = +0.000994  (+2.4%)
+    Delta test Recall@20 = -0.002652  (-3.5%)
+    Delta test NDCG@10   = +0.000663  (+3.2%)
+    Delta test NDCG@20   = -0.000229  (-0.8%)
+
+Interpretation:
+  This is a mixed result, not the unambiguous win the
+  hypothesis predicted (we expected val NDCG@10 in the
+  0.028 - 0.032 range).
+
+  The model-selection metric (val NDCG@10) drifted DOWN
+  by 0.75%. Validation Recall@10 also fell by 1.6%, and
+  Recall@20 by 1.0%.
+
+  However, on the held-out test split, both top-10 metrics
+  IMPROVED meaningfully: test NDCG@10 by +3.2% and test
+  Recall@10 by +2.4%. Test top-20 metrics moved in the
+  opposite direction (Recall@20 down 3.5%, NDCG@20 down
+  0.8%), which is consistent with the K = 100 model being
+  more selective at the very top of the ranking but slightly
+  less so further down.
+
+  One plausible reading is that K = 100 reduces overfitting
+  to the validation split (since the contrastive signal is
+  no longer dominated by the few negatives that happen to
+  rank near val items at K=1) and so generalizes slightly
+  better to test. But this reading is speculative on a
+  single run; the validation drop is the metric we are
+  obliged to optimise under our model-selection rule, and
+  the per-metric pattern is not consistent enough to claim
+  an unambiguous improvement.
+
+  We can also reject the simplest version of the original
+  hypothesis: increasing K from 1 to 100 alone is NOT
+  sufficient to break the val NDCG@10 plateau on this
+  dataset. The catalogue is small (~3,706 items) and
+  uniform sampling at K = 100 is still mostly drawing
+  trivial negatives - approximately 95+ of every 100
+  uniformly-sampled items are negatives the model already
+  scores very low. To meaningfully improve, the negatives
+  themselves probably need to be HARDER (popularity-based
+  or neighbour-based mining), not merely MORE numerous.
+
+Decision: REVERT to K = 1 for the reported final model.
+  Reasons:
+    1. The model-selection metric (val NDCG@10) did not
+       improve. Under our own protocol we are obliged to
+       pick the model that wins on val NDCG@10, and that
+       is K = 1 by 0.000199 (-0.75%).
+    2. The validation Recall@10 also fell, so the val
+       movement is consistent across recall and NDCG at
+       the @10 cutoff.
+    3. Although test NDCG@10 / Recall@10 both improved by
+       a meaningful margin, treating that as a reason to
+       choose K = 100 would amount to tuning on test, which
+       we explicitly do not allow ourselves to do.
+
+  Status: REVERTED for final reported numbers.
+  Code retained: the --num_negatives flag stays in train.py
+  / run_exp.py / model.py with default 1, so any future run
+  with K > 1 only requires passing the flag; nothing else
+  has to change. Default behaviour (no flag) reproduces the
+  Chapter 10 baseline exactly.
+
+  Going-forward final baseline (unchanged from Chapter 10):
+    val  NDCG@10 = 0.026540
+    test NDCG@10 = 0.020831
+
+Lesson learned (revised version of the earlier preview):
+  Increasing the per-position negative count from K = 1 to
+  K = 100 was insufficient to break the BCE training-loss
+  plateau on MovieLens 1M. With ~3,706 items in the
+  catalogue and uniform sampling, almost all of the
+  additional negatives are still trivial - items the model
+  already scores low - so the gradient signal does not
+  improve as much as expected.
+
+  The interesting secondary observation is that K = 100
+  shifted the val/test pattern: validation slightly
+  weakened while test top-10 metrics modestly improved,
+  hinting that K = 100 may produce a somewhat better
+  generaliser even when it loses on the selection metric.
+  This is suggestive but not conclusive on a single run.
+
+  The natural follow-up - which we did not have time to
+  attempt - is HARD negative mining: drawing negatives
+  from popular items, from items co-occurring with the
+  user's history, or from items the model currently scores
+  near or above the positive. A small number of hard
+  negatives is generally a much stronger gradient signal
+  than a large number of random ones. This is documented
+  as a future-work direction in Section 4.4 of the report.
+
+  Reporting note for the team:
+    For the final results table, use the K = 1 numbers
+    (val NDCG@10 = 0.026540, test NDCG@10 = 0.020831).
+    The K = 100 result still goes into the report - in
+    Section 4 (Observations / negative results) - because
+    it is informative as a documented attempt that did
+    not pan out, and motivates the hard-negative-mining
+    direction in Section 4.4.
+
+============================================================
 TEMPLATE FOR FUTURE ENTRIES
 ============================================================
 CHAPTER N — <short title>

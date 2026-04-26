@@ -110,6 +110,7 @@ def parse_args():
     parser.add_argument("--hidden_units", type=int, default=128)
     parser.add_argument("--num_blocks", type=int, default=2)
     parser.add_argument("--num_heads", type=int, default=2)
+    parser.add_argument("--num_negatives", type=int, default=3)
 
     return parser.parse_args()
 
@@ -219,15 +220,15 @@ def train(args):
 
     device = model.device
 
-    # Linear warmup for first 5% of steps, then cosine decay to 0.
-    total_steps = args.epochs * len(train_loader)
-    warmup_steps = max(1, int(0.05 * total_steps))
+    # Linear warmup over the first 2 epochs, then constant LR.
+    # Cosine decay was removed: with early stopping it decays the LR before
+    # the model has had enough epochs to benefit.
+    warmup_steps = max(1, 2 * len(train_loader))
 
     def lr_lambda(current_step):
         if current_step < warmup_steps:
             return current_step / warmup_steps
-        progress = (current_step - warmup_steps) / max(1, total_steps - warmup_steps)
-        return max(0.0, 0.5 * (1.0 + math.cos(math.pi * progress)))
+        return 1.0
 
     scheduler = torch.optim.lr_scheduler.LambdaLR(model.optimizer, lr_lambda)
 
@@ -253,25 +254,29 @@ def train(args):
             # Sample negatives with same shape as pos.
             # Get full interacted-item set for each row/user in this batch.
             batch_histories = [dataset.user_histories[i] for i in row_idx.tolist()]
-            neg = sample_negative_items(
-                pos_items=pos,
-                user_histories_batch=batch_histories,  # full user history exclusion
-                item_num=item_num,
-                device=device,
-            )
 
             # Forward pass.
             hidden = model(seq)
 
-            # Score positive and negative items.
+            # Score positive items.
             pos_scores = model.predict_next(hidden, pos)
-            neg_scores = model.predict_next(hidden, neg)
+
+            # Score each of the num_negatives sampled negatives independently.
+            neg_scores_list = []
+            for _ in range(args.num_negatives):
+                neg = sample_negative_items(
+                    pos_items=pos,
+                    user_histories_batch=batch_histories,
+                    item_num=item_num,
+                    device=device,
+                )
+                neg_scores_list.append(model.predict_next(hidden, neg))
 
             # Ignore padding in loss.
             mask = (pos != 0)
 
             # Compute loss.
-            loss = model.compute_loss(pos_scores, neg_scores, mask)
+            loss = model.compute_loss(pos_scores, neg_scores_list, mask)
 
             # Backprop + update.
             model.optimizer.zero_grad()

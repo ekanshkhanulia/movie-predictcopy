@@ -90,7 +90,11 @@ class SASRec(nn.Module):
             attn_output, _ = self.attention_layers[i](
                 seqs_norm, seqs_norm, seqs_norm,
                 attn_mask=attn_mask,
+                key_padding_mask=key_padding_mask,
             )
+            # Positions where all keys are masked produce NaN from softmax(-inf,...).
+            # Replace those with 0 so they don't pollute downstream computations.
+            attn_output = torch.nan_to_num(attn_output, nan=0.0)
 
             # Residual connection
             seqs = seqs + attn_output
@@ -126,15 +130,19 @@ class SASRec(nn.Module):
         all_embs = self.item_emb.weight
         return torch.matmul(h, all_embs.T)
     
-    def compute_loss(self, pos_scores, neg_scores, mask):
+    def compute_loss(self, pos_scores, neg_scores_list, mask):
         """
         Binary cross-entropy loss with negative sampling.
-        Padding positions are excluded from the loss using the mask (which is True at non-padding positions). 
+        neg_scores_list is a list of negative score tensors (one per sampled negative).
+        Padding positions are excluded from the loss using the mask.
         """
-        # Positive items are labeled 1, negatives are labeled 0
-        pos_loss = F.binary_cross_entropy_with_logits(pos_scores, torch.ones_like(pos_scores), reduction='none')
-        neg_loss = F.binary_cross_entropy_with_logits(neg_scores, torch.zeros_like(neg_scores), reduction='none')
-        
+        pos_loss = F.binary_cross_entropy_with_logits(
+            pos_scores, torch.ones_like(pos_scores), reduction='none'
+        )
+        neg_loss = torch.stack([
+            F.binary_cross_entropy_with_logits(ns, torch.zeros_like(ns), reduction='none')
+            for ns in neg_scores_list
+        ]).mean(dim=0)
         loss = (pos_loss + neg_loss)[mask]
         return loss.mean()
 

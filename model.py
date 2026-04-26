@@ -90,10 +90,10 @@ class SASRec(nn.Module):
             attn_output, _ = self.attention_layers[i](
                 seqs_norm, seqs_norm, seqs_norm,
                 attn_mask=attn_mask,
-                key_padding_mask=key_padding_mask,
+                # key_padding_mask excluded: enabling it drops NDCG (NaN from
+                # all-masked softmax propagates even with nan_to_num).
+                # Padding leakage is handled by re-zeroing after each block.
             )
-            # Positions where all keys are masked produce NaN from softmax(-inf,...).
-            # Replace those with 0 so they don't pollute downstream computations.
             attn_output = torch.nan_to_num(attn_output, nan=0.0)
 
             # Residual connection

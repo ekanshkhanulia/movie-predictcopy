@@ -87,17 +87,21 @@ class SASRec(nn.Module):
             attn_output, _ = self.attention_layers[i](
                 seqs_norm, seqs_norm, seqs_norm,
                 attn_mask=attn_mask,
-                key_padding_mask=key_padding_mask,
             )
 
             # Residual connection
             seqs = seqs + attn_output
 
-            # Nnormalize before FFN, then add residual
+            # Normalize before FFN, then add residual
             seqs_norm = self.forward_layernorms[i](seqs)
             ffn_output = self.forward_layers[i](seqs_norm)
 
             seqs = seqs + ffn_output
+
+            # Re-zero padding positions: LayerNorm on zero vectors produces a
+            # non-zero bias term, so padding accumulates noise across blocks.
+            # Clearing it each block keeps padding from leaking into real items.
+            seqs *= (X != 0).unsqueeze(-1)
 
         return self.last_layernorm(seqs)
     

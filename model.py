@@ -87,7 +87,7 @@ class SASRec(nn.Module):
             attn_output, _ = self.attention_layers[i](
                 seqs_norm, seqs_norm, seqs_norm,
                 attn_mask=attn_mask,
-                ## key_padding_mask=key_padding_mask chnage2
+                key_padding_mask=key_padding_mask,
             )
 
             # Residual connection

@@ -101,12 +101,12 @@ def parse_args():
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--epochs", type=int, default=50)
     parser.add_argument("--batch_size", type=int, default=128)
-    parser.add_argument("--patience", type=int, default=5)
+    parser.add_argument("--patience", type=int, default=10)
 
     parser.add_argument("--lr", type=float, default=1e-3)
     parser.add_argument("--dropout_rate", type=float, default=0.2)
     parser.add_argument("--maxlen", type=int, default=50)
-    parser.add_argument("--hidden_units", type=int, default=64)
+    parser.add_argument("--hidden_units", type=int, default=128)
     parser.add_argument("--num_blocks", type=int, default=2)
     parser.add_argument("--num_heads", type=int, default=2)
 

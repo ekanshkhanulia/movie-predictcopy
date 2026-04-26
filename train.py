@@ -1,4 +1,5 @@
 import argparse
+import math
 import os
 import random
 
@@ -99,9 +100,9 @@ def parse_args():
     parser.add_argument("--ckpt_name", type=str, default="sasrec_best.pt")
 
     parser.add_argument("--seed", type=int, default=42)
-    parser.add_argument("--epochs", type=int, default=50)
+    parser.add_argument("--epochs", type=int, default=200)
     parser.add_argument("--batch_size", type=int, default=128)
-    parser.add_argument("--patience", type=int, default=10)
+    parser.add_argument("--patience", type=int, default=20)
 
     parser.add_argument("--lr", type=float, default=1e-3)
     parser.add_argument("--dropout_rate", type=float, default=0.2)
@@ -218,6 +219,18 @@ def train(args):
 
     device = model.device
 
+    # Linear warmup for first 5% of steps, then cosine decay to 0.
+    total_steps = args.epochs * len(train_loader)
+    warmup_steps = max(1, int(0.05 * total_steps))
+
+    def lr_lambda(current_step):
+        if current_step < warmup_steps:
+            return current_step / warmup_steps
+        progress = (current_step - warmup_steps) / max(1, total_steps - warmup_steps)
+        return max(0.0, 0.5 * (1.0 + math.cos(math.pi * progress)))
+
+    scheduler = torch.optim.lr_scheduler.LambdaLR(model.optimizer, lr_lambda)
+
     # Prepare checkpoint folder/file.
     os.makedirs(args.ckpt_dir, exist_ok=True)
     ckpt_path = os.path.join(args.ckpt_dir, args.ckpt_name)
@@ -265,6 +278,7 @@ def train(args):
             loss.backward()
             torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=5.0)
             model.optimizer.step()
+            scheduler.step()
 
             epoch_loss += loss.item()
             num_batches += 1

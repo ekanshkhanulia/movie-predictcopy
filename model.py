@@ -24,10 +24,13 @@ class SASRec(nn.Module):
         # Item embeddings
         # item_num + 1 because index 0 is reserved for padding
         # padding_idx=0 ensures pad tokens always produce a zero vector
-        self.item_emb = nn.Embedding(item_num + 1, hidden_units, padding_idx=0) 
+        self.item_emb = nn.Embedding(item_num + 1, hidden_units, padding_idx=0)
+        nn.init.normal_(self.item_emb.weight, mean=0.0, std=0.01)
+        self.item_emb.weight.data[0].zero_()  # keep padding row exactly zero
 
         # Positional embeddings
         self.pos_emb = nn.Embedding(maxlen, hidden_units)
+        nn.init.normal_(self.pos_emb.weight, mean=0.0, std=0.01)
 
         # Dropout on item + position embeddings for regularization
         self.emb_dropout = nn.Dropout(dropout_rate)

@@ -891,6 +891,153 @@ Lesson noted:
    TensorFlow's. We reverted the change."
 
 ============================================================
+CHAPTER 12 — Change 5: NaN-Safe key_padding_mask (Plan B
+              from Chapter 7 finally implemented)
+============================================================
+
+Date: 2026-04-26
+
+Background / motivation:
+  Chapter 6 confirmed that naively uncommenting key_padding_mask
+  collapses training (NDCG@10 ~0.004) because left-padded
+  positions produce all-masked attention rows, softmax returns
+  NaN, and NaN poisons the residual stream.
+
+  Chapter 7 described two safe fixes. We now implement option (b):
+  keep left-padding, but after each attention call:
+    1. torch.nan_to_num(attn_output, nan=0.0) – NaN rows → 0
+    2. attn_output * (X != 0) – explicitly zero pad output rows
+
+  Additionally we add a post-FFN zeroing inside each block:
+    seqs = seqs * (X != 0) – prevents pad accumulation across
+                              transformer blocks.
+
+  Root cause of the performance ceiling without this fix:
+    - Real positions' LayerNorm (run on zeroed-but-then-LN-biased
+      pad embeddings) produces non-zero query/key vectors for pads.
+    - Without key_padding_mask, real positions waste attention
+      budget on pad keys. Longer sequences have more pads → worse
+      NDCG, which is why maxlen=50 always beat maxlen=100/200 in
+      Phase 1.
+
+Changes applied:
+
+  model.py – forward(), inside the transformer block loop:
+
+    OLD:
+      attn_output, _ = self.attention_layers[i](
+          seqs_norm, seqs_norm, seqs_norm,
+          attn_mask=attn_mask,
+          #key_padding_mask=key_padding_mask  #chnage2
+      )
+      seqs = seqs + attn_output
+      seqs_norm = self.forward_layernorms[i](seqs)
+      ffn_output = self.forward_layers[i](seqs_norm)
+      seqs = seqs + ffn_output
+
+    NEW:
+      attn_output, _ = self.attention_layers[i](
+          seqs_norm, seqs_norm, seqs_norm,
+          attn_mask=attn_mask,
+          key_padding_mask=key_padding_mask,  # re-enabled with NaN safety
+      )
+      attn_output = torch.nan_to_num(attn_output, nan=0.0)
+      attn_output = attn_output * (X != 0).unsqueeze(-1)
+      seqs = seqs + attn_output
+      seqs_norm = self.forward_layernorms[i](seqs)
+      ffn_output = self.forward_layers[i](seqs_norm)
+      seqs = seqs + ffn_output
+      seqs = seqs * (X != 0).unsqueeze(-1)  # keep pad positions clean
+
+Why it is safe this time (unlike Chapter 6):
+  - nan_to_num converts all-masked NaN rows to 0 before the
+    residual add, so NaN never enters the residual stream.
+  - The post-attention * (X != 0) mask forces pad output to 0
+    regardless of what nan_to_num produced.
+  - The post-FFN * (X != 0) mask prevents the FFN from writing
+    garbage into pad positions across blocks (LayerNorm of a 0
+    vector produces bias-only output, which FFN would amplify).
+  - Real positions see only real-item keys (pads are masked by
+    key_padding_mask), so their attention is no longer diluted.
+
+Expected effect:
+  Meaningful improvement, especially for sequences with many pad
+  positions. Configs with maxlen > 50 should benefit most, but
+  even maxlen=50 should improve because every user has at least
+  some padding (most training sequences are shorter than 50).
+
+Result: TBD
+
+============================================================
+CHAPTER 13 — Change 6: Multiple Negatives per Position
+              (num_neg=5, from Chapter 4/7 plan item B)
+============================================================
+
+Date: 2026-04-26
+
+Background / motivation:
+  Chapter 4 identified "only 1 negative per positive position"
+  as a weak training signal. Chapter 7 flagged it as the
+  "cheapest first experiment" but it was never executed.
+
+  The standard SASRec training setup in the literature uses
+  multiple negatives. With a single negative, the BCE gradient
+  signal per step is roughly half of what it could be, and the
+  model gets limited information about the score boundary between
+  positive and negative items.
+
+  Increasing num_neg gives the optimizer more gradient per
+  update without increasing the number of forward passes.
+
+Changes applied:
+
+  train.py – sample_negative_items():
+    OLD: returns [batch, seq_len]  (1 negative per position)
+    NEW: returns [batch, seq_len, num_neg]  (num_neg negatives)
+         Added `num_neg=1` keyword arg (default 5 in argparse).
+
+  train.py – parse_args():
+    Added --num_neg INT (default 5).
+
+  train.py – training loop:
+    Passes num_neg=args.num_neg to sample_negative_items.
+
+  model.py – predict_next():
+    Now handles both 2D [batch, seq_len] and 3D
+    [batch, seq_len, num_neg] item_indices by checking dim().
+    3D path: seq_hidden.unsqueeze(2) broadcast over num_neg.
+
+  model.py – compute_loss():
+    When neg_scores is 3D, averages the neg BCE over the
+    num_neg dimension before applying the padding mask.
+
+Why this is correct:
+  Each position contributes:
+    loss_pos  = BCE(pos_score, 1)
+    loss_neg  = mean_over_k BCE(neg_score_k, 0)
+  Averaging (not summing) over negatives keeps the loss scale
+  comparable to the 1-neg case, so the same learning rate works.
+
+Expected effect:
+  Positive, likely +3-8% on NDCG@10. The improvement is larger
+  when the model hasn't converged yet (early training) because
+  the gradient signal is richer per step. At convergence the
+  effect diminishes but rarely hurts.
+
+Config tested:
+  num_blocks   = 2
+  hidden_units = 128
+  num_heads    = 4
+  maxlen       = 50
+  epochs       = 50
+  dropout      = 0.5
+  lr           = 1e-3
+  patience     = 5
+  num_neg      = 5
+
+Result: TBD
+
+============================================================
 TEMPLATE FOR FUTURE ENTRIES
 ============================================================
 CHAPTER N — <short title>

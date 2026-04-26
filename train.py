@@ -57,32 +57,25 @@ def set_seed(seed: int) -> None:
 #     return neg_items
 
 
-def sample_negative_items(pos_items, user_histories_batch, item_num, device):
+def sample_negative_items(pos_items, user_histories_batch, item_num, device, num_neg=1):
     """
-    SASRec-style negative sampling:
-    - For each user row and each valid target position:
-      sample random item from [1, item_num]
-      reject it if:
-        (a) item is in that user's full interaction history
-        (b) item equals current positive target
-    - Keep padding positions (pos == 0) as 0.
+    SASRec-style negative sampling returning num_neg negatives per position.
+    Returns shape [batch, seq_len, num_neg]. Padding positions stay 0.
     """
-    neg_items = torch.zeros_like(pos_items, device=device)
     batch_size, seq_len = pos_items.shape
+    neg_items = torch.zeros(batch_size, seq_len, num_neg, device=device, dtype=torch.long)
     for i in range(batch_size):
-        seen_items = user_histories_batch[i]  # set of all items this user has interacted with
+        seen_items = user_histories_batch[i]
         for j in range(seq_len):
             pos_id = int(pos_items[i, j].item())
-            # Padding position -> keep 0
             if pos_id == 0:
-                neg_items[i, j] = 0
                 continue
-            # Rejection sampling until valid negative found
-            while True:
-                neg_id = random.randint(1, item_num)
-                if (neg_id not in seen_items) and (neg_id != pos_id):
-                    neg_items[i, j] = neg_id
-                    break
+            for k in range(num_neg):
+                while True:
+                    neg_id = random.randint(1, item_num)
+                    if (neg_id not in seen_items) and (neg_id != pos_id):
+                        neg_items[i, j, k] = neg_id
+                        break
     return neg_items
 
 
@@ -109,6 +102,7 @@ def parse_args():
     parser.add_argument("--hidden_units", type=int, default=64)
     parser.add_argument("--num_blocks", type=int, default=2)
     parser.add_argument("--num_heads", type=int, default=2)
+    parser.add_argument("--num_neg", type=int, default=5)
 
     return parser.parse_args()
 
@@ -257,9 +251,10 @@ def train(args):
             
             neg = sample_negative_items(
                 pos_items=pos,
-                user_histories_batch=batch_histories,  # full user history exclusion
+                user_histories_batch=batch_histories,
                 item_num=item_num,
                 device=device,
+                num_neg=args.num_neg,
             )
 
             # Forward pass.

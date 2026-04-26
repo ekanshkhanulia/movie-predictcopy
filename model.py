@@ -98,28 +98,37 @@ class SASRec(nn.Module):
             attn_output, _ = self.attention_layers[i](
                 seqs_norm, seqs_norm, seqs_norm,
                 attn_mask=attn_mask,
-                #key_padding_mask=key_padding_mask  #chnage2
+                key_padding_mask=key_padding_mask,  # Chapter 12: re-enabled with NaN safety
             )
+
+            # Chapter 12: pad positions have all-masked attention rows -> NaN softmax.
+            # nan_to_num converts NaN->0; the mask multiply zeros pad output rows so
+            # they cannot leak into real positions through the residual connection.
+            attn_output = torch.nan_to_num(attn_output, nan=0.0)
+            attn_output = attn_output * (X != 0).unsqueeze(-1)
 
             # Residual connection
             seqs = seqs + attn_output
 
-            # Nnormalize before FFN, then add residual
+            # Normalize before FFN, then add residual
             seqs_norm = self.forward_layernorms[i](seqs)
             ffn_output = self.forward_layers[i](seqs_norm)
 
             seqs = seqs + ffn_output
+            # Chapter 12: zero pad positions after FFN so they stay clean across blocks
+            seqs = seqs * (X != 0).unsqueeze(-1)
 
         return self.last_layernorm(seqs)
     
     def predict_next(self, seq_hidden, item_indices):
         """
-        Prediction layer used during training: scores one item per position via dot product 
-        between the hidden state and the item's embedding.
-        Used to score both positive (true next) and negative (sampled) items.
+        Prediction layer used during training: scores items per position via dot product.
+        item_indices can be [batch, seq_len] (pos) or [batch, seq_len, num_neg] (neg).
         """
         item_embs = self.item_emb(item_indices)
-        return (seq_hidden * item_embs).sum(dim=-1)
+        if item_indices.dim() == 3:  # [batch, seq_len, num_neg, hidden]
+            return (seq_hidden.unsqueeze(2) * item_embs).sum(dim=-1)  # [batch, seq_len, num_neg]
+        return (seq_hidden * item_embs).sum(dim=-1)  # [batch, seq_len]
 
     def predict_all_items(self, seq_hidden):
         """
@@ -133,12 +142,13 @@ class SASRec(nn.Module):
     def compute_loss(self, pos_scores, neg_scores, mask):
         """
         Binary cross-entropy loss with negative sampling.
-        Padding positions are excluded from the loss using the mask (which is True at non-padding positions). 
+        neg_scores can be [batch, seq_len] (1 neg) or [batch, seq_len, num_neg].
+        Padding positions are excluded via mask (True = real position).
         """
-        # Positive items are labeled 1, negatives are labeled 0
         pos_loss = F.binary_cross_entropy_with_logits(pos_scores, torch.ones_like(pos_scores), reduction='none')
         neg_loss = F.binary_cross_entropy_with_logits(neg_scores, torch.zeros_like(neg_scores), reduction='none')
-        
+        if neg_scores.dim() == 3:  # average over num_neg dimension -> [batch, seq_len]
+            neg_loss = neg_loss.mean(dim=-1)
         loss = (pos_loss + neg_loss)[mask]
         return loss.mean()
 

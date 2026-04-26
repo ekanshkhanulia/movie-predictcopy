@@ -216,6 +216,19 @@ def train(args):
         lr=args.lr,
     )
 
+    # change after grid search - LR warmup scheduler - DOESN'T WORK
+    # Tried 1000-step linear warmup. With our short training (50 epochs * ~47
+    # batches = ~2350 steps total), 1000 warmup steps = ~42% of training at
+    # reduced lr. Patience=5 early-stopped before the model could recover.
+    # Result: val NDCG@10 dropped 0.026883 -> 0.025061 (-6.8%).
+    # Reverted. Kept commented for record. See CHANGE_LOG Chapter 9.
+    # warmup_steps = 1000
+    # def lr_lambda(step):
+    #     if step < warmup_steps:
+    #         return float(step + 1) / float(warmup_steps)
+    #     return 1.0
+    # scheduler = torch.optim.lr_scheduler.LambdaLR(model.optimizer, lr_lambda)
+
     device = model.device
 
     # Prepare checkpoint folder/file.
@@ -239,7 +252,9 @@ def train(args):
 
             # Sample negatives with same shape as pos.
             # Get full interacted-item set for each row/user in this batch.
-            batch_histories = [dataset.user_histories[i] for i in row_idx.tolist()]
+            # batch_histories = [dataset.user_histories[i] for i in row_idx.tolist()]  # change after grid search - excluded train+val+test (val/test info leak)
+            batch_histories = [dataset.train_histories[i] for i in row_idx.tolist()]  # change after grid search - matches official SASRec (excludes only training history)
+            
             neg = sample_negative_items(
                 pos_items=pos,
                 user_histories_batch=batch_histories,  # full user history exclusion
@@ -265,6 +280,7 @@ def train(args):
             loss.backward()
             torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=5.0)
             model.optimizer.step()
+            # scheduler.step()  # change after grid search - DOESN'T WORK )
 
             epoch_loss += loss.item()
             num_batches += 1

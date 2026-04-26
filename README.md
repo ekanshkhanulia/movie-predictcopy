@@ -1,195 +1,141 @@
-# Assignment 2: SASRec (Sequential Recommendation)
 
-## Objective
+Hide Assignment Information
+Group Category
+Group
+Group Name
+Group 18
+Instructions
+Assignment 2: SASRec
+🎯 Objective
+In this assignment, you will implement a sequential recommendation model based on SASRec to predict the next item a user will interact with from their historical behavior sequence. SASRec is a strong self-attention-based sequential recommendation model that captures users’ dynamic preferences by modeling dependencies among previously interacted items.
 
-This project implements **SASRec** (Self-Attentive Sequential Recommendation) in PyTorch to predict the next movie a user will interact with based on past behavior.
+Your goal is to:
 
-The assignment goals are to:
-- implement SASRec from scratch (core architecture and training logic),
-- train/evaluate on **MovieLens 1M**,
-- report **Recall@10**, **Recall@20**, **NDCG@10**, and **NDCG@20**,
-- compare model configurations (blocks, hidden size, heads, max sequence length).
+Implement SASRec using PyTorch
 
-Official reference paper/code:
-- [SASRec GitHub (kang205)](https://github.com/kang205/SASRec)
+Train and evaluate the model on the MovieLens 1M dataset
 
----
+Evaluate the performance using NDCG@10, NDCG@20 and Recall@10, Recall@20
 
-## Dataset
+You may refer to the official SASRec implementation for guidance:
+https://github.com/kang205/SASRec
 
-Use MovieLens 1M ratings with format:
+📁 Dataset
+Use the MovieLens 1M dataset, which can be downloaded from the MovieLens Official Website. The dataset format is:
 
-`userId::movieId::rating::timestamp`
+userId::movieId::rating::timestamp
+For this assignment:
 
-Preprocessing rules:
-- treat ratings `>= 4` as positive interactions,
-- discard ratings `< 4`,
-- sort each user's interactions chronologically by timestamp,
-- keep users with at least 5 positive interactions.
+Treat ratings ≥ 4 as positive interactions
 
----
+Ignore all interactions with ratings < 4
 
-## Project Structure
+Convert each user’s history into a chronologically ordered sequence of interacted items
 
-- `data.py`: MovieLens loading, preprocessing, filtering, leave-one-out splits, dataloaders.
-- `model.py`: SASRec architecture (embeddings, self-attention blocks, masking, prediction layers, loss).
+🛠️ Implementation Requirements
+1. Data Preprocessing (15 points)
+Load and preprocess the MovieLens dataset
 
----
+Convert explicit ratings to binary implicit feedback
 
-## 1) Data Preprocessing (Rubric: 15 pts)
+Generate chronological interaction sequences for each user
 
-Implemented in `MovieLensDataset` (`data.py`):
+Filter out users with fewer than 5 interactions
 
-- **Loading**:
-  - reads `movies.dat` and `ratings.dat`,
-  - converts `::` delimiter to a tab separator for faster parsing.
-- **Implicit conversion**:
-  - converts ratings to binary (`1` for `>=4`),
-  - keeps only positives.
-- **Chronological sequences**:
-  - sorts interactions by `Timestamp`,
-  - groups by user to create per-user ordered item sequences.
-- **User filtering**:
-  - removes users with fewer than 5 interactions.
-- **Leave-one-out split**:
-  - training prefix: all but last two items,
-  - validation target: second-to-last item,
-  - test target: last item.
-- **Sequence formatting**:
-  - left-padding with `0` and truncation to `maxlen`,
-  - training labels are shifted next-item targets for each timestep,
-  - stores user history sets for negative sampling.
+For each user sequence, apply a leave-one-out split:
 
----
+Use all but the last two interactions for training
 
-## 2) SASRec Model (Rubric: 20 pts)
+Use the second-to-last interaction for validation
 
-Implemented in `SASRec` (`model.py`):
+Use the last interaction for testing
 
-- **Embedding layer**:
-  - item embedding table with `padding_idx=0`,
-  - learnable positional embeddings.
-- **Transformer-style blocks**:
-  - multi-head self-attention (`nn.MultiheadAttention`),
-  - point-wise feedforward network,
-  - residual connections and layer normalization (Pre-LN style),
-  - dropout for regularization.
-- **Causal masking**:
-  - upper-triangular attention mask prevents future leakage.
-- **Padding handling**:
-  - key padding mask excludes padded tokens from attention.
-- **Prediction heads**:
-  - `predict_next(...)`: pointwise scoring for positive/negative sampled items,
-  - `predict_all_items(...)`: full-item scoring for ranking at evaluation time.
+Construct input–target pairs for next-item prediction based on user sequences
 
----
+2. SASRec Model (20 points)
+Implement the SASRec architecture, including:
 
-## 3) Training and Optimization (Rubric: 20 pts)
+Item embeddings and positional embeddings
 
-### Training Objective
+Self-attention blocks for modeling sequential dependencies
 
-Use next-item prediction with binary classification on:
-- one positive target item,
-- one (or more) sampled negative items.
+Causal attention masking so that each position only attends to previous items
 
-Current loss in `model.py`:
-- binary cross-entropy with logits over positive and negative scores,
-- mask out padded positions when averaging.
+Feedforward layers, dropout, and layer normalization
 
-### Optimizer and Regularization
+A final prediction layer that scores candidate items based on the sequence representation
 
-- optimizer: Adam (`torch.optim.Adam`)
-- regularization:
-  - dropout in embeddings/attention/FFN,
-  - layer normalization in every block,
-  - weight decay (already set in optimizer).
+Use PyTorch for implementation. You may not simply call a ready-made SASRec package without understanding and adapting the architecture yourself.
 
-### Early Stopping
+3. Training and Optimization (20 points)
+Train the model using the next-item prediction objective
 
-Implement early stopping using validation **NDCG@10**:
-- evaluate after each epoch,
-- if validation NDCG@10 does not improve for `patience` epochs, stop,
-- keep best model checkpoint.
+Use the Adam optimizer with appropriate learning rate tuning or scheduling
 
----
+Implement early stopping based on validation NDCG@10
 
-## 4) Evaluation (Rubric: 15 pts)
+Use dropout and layer normalization appropriately
 
-Evaluate on validation and test using sequence prefix and held-out next item.
+Use negative sampling during training
 
-Report:
-- Recall@10
-- Recall@20
-- NDCG@10
-- NDCG@20
+4. Evaluation (15 points)
+Evaluate the model using:
 
-### Metric Definitions
+Recall@10, Recall@20
 
-For each user, rank candidate items by predicted score:
+NDCG@10, NDCG@20
 
-- `Recall@K = 1` if true next item appears in top-K, else `0` (then averaged).
-- `NDCG@K = 1 / log2(rank+1)` if true item rank <= K, else `0` (then averaged).
+For evaluation: (Full ranking)
 
-### Candidate Set
+Use the sequence prefix to predict the held-out next item in the validation and test sets
 
-Use one of the following evaluation protocols consistently:
-- **Sampled ranking**: true item + N random negatives not in user history.
-- **Full ranking**: rank among all items not seen in training history.
+Compare performance across different configurations, such as:
 
-State clearly which protocol you use in your report.
+number of self-attention blocks
 
----
+hidden size
 
-## Suggested Experiment Configurations
+number of attention heads
 
-Compare at least these settings:
+maximum sequence length
 
-- number of blocks: `[1, 2, 3]`
-- hidden size: `[64, 128, 256]`
-- attention heads: `[1, 2, 4]`
-- max sequence length: `[50, 100, 200]`
+5. Experiment Report (40 points)
+Write a concise 2–3 page report summarizing your work (do not exceed 5 pages excluding references), including:
 
-Keep other hyperparameters fixed while changing one factor at a time for fair comparison.
+Preprocessing and sequence construction
 
----
+Model architecture and implementation details
 
-## Example Training Setup
+Training setup and hyperparameters
 
-Recommended starting hyperparameters:
-- learning rate: `1e-3` (or `5e-4`)
-- batch size: `128`
-- dropout: `0.2`
-- epochs: `50`
-- patience (early stop): `5`
-- negatives per positive: `1` to `5`
+Evaluation results and comparison across settings
 
----
+Insights, challenges, and suggestions for improvement
 
-## Reproducibility Checklist
+📝 Submission Requirements
+Submit the following files:
 
-- set random seeds (`random`, `numpy`, `torch`),
-- log all hyperparameters,
-- save best checkpoint by validation NDCG@10,
-- report both validation and test metrics,
-- include hardware/environment details.
+Python source code (.py or .ipynb) with clear inline comments
 
----
+Experiment report (.pdf) written using LaTeX, using the Springer LNCS Overleaf Template or ACM double-column format (https://www.overleaf.com/latex/templates/association-for-computing-machinery-acm-sig-proceedings-template/bmvfhcdnxfty).
 
-## What to Submit
+A README.md file with instructions on how to run the code
 
-1. Source code (`data.py`, `model.py`, training/eval script).
-2. This README.
-3. A short report including:
-   - preprocessing pipeline,
-   - model design summary,
-   - training details,
-   - metric results table (Recall/NDCG at 10/20),
-   - hyperparameter comparison table/plot,
-   - brief discussion of findings.
+📊 Grading Breakdown
+Task	Points	Criteria
+Data Preprocessing	15	Correctly generates sequences and dataset splits
+SASRec Implementation	20	Accurately implements self-attention-based sequential recommendation
+Training & Optimization	20	Trains model with appropriate objective and tuning strategies
+Evaluation	15	Computes required metrics correctly and compares different settings
+Experiment Report	40	Well-structured, concise, and insightful
+Total	100	
+⏰ Deadline & Submission
+Submission Deadline: 27th April 2025, 23:59
 
----
+Submit via Brightspace
 
-## Notes
+Late Penalty: 5% deduction per day
 
-- This repository currently contains data and model components.
-- Add a `train.py` (or notebook) that wires dataset, model, negative sampling, training loop, evaluation, and early stopping for full end-to-end execution.
+Submissions made after 4th May 2025, 23:59 will receive 0 points
+
+Due on 27 April 2026 23:59

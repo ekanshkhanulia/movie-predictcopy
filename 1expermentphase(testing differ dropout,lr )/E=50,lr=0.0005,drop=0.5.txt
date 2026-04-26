@@ -1,0 +1,15 @@
+num_blocks=1, hidden_units=128, num_heads=1, maxlen=50
+  Val  | Recall@10=0.051706, Recall@20=0.084189, NDCG@10=0.025073, NDCG@20=0.033242
+  Test | Recall@10=0.0411, Recall@20=0.07408, NDCG@10=0.019979, NDCG@20=0.028293
+
+
+
+   num_blocks=2, hidden_units=128, num_heads=1, maxlen=50
+  Val  | Recall@10=0.053198, Recall@20=0.087338, NDCG@10=0.026108, NDCG@20=0.034652
+  Test | Recall@10=0.042757, Recall@20=0.075737, NDCG@10=0.020703, NDCG@20=0.028931
+
+
+
+ num_blocks=2, hidden_units=128, num_heads=2, maxlen=50
+  Val  | Recall@10=0.052535, Recall@20=0.086675, NDCG@10=0.025925, NDCG@20=0.034462
+  Test | Recall@10=0.043089, Recall@20=0.075406, NDCG@10=0.021348, NDCG@20=0.029448

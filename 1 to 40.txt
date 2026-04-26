@@ -1,0 +1,330 @@
+Run 1/81 | num_blocks=1, hidden_units=64, num_heads=1, maxlen=50
+  Val  | Recall@10=0.050049, Recall@20=0.081537, NDCG@10=0.023419, NDCG@20=0.031276
+  Test | Recall@10=0.039774, Recall@20=0.071594, NDCG@10=0.020003, NDCG@20=0.027922
+Run 1/81 done
+Run 2/81 | num_blocks=1, hidden_units=64, num_heads=1, maxlen=100
+  Val  | Recall@10=0.049386, Recall@20=0.083526, NDCG@10=0.024688, NDCG@20=0.033261
+  Test | Recall@10=0.041763, Recall@20=0.07176, NDCG@10=0.020632, NDCG@20=0.02813
+Run 2/81 done
+Run 3/81 | num_blocks=1, hidden_units=64, num_heads=1, maxlen=200
+  Val  | Recall@10=0.048558, Recall@20=0.083029, NDCG@10=0.022839, NDCG@20=0.031386
+  Test | Recall@10=0.04226, Recall@20=0.072091, NDCG@10=0.020753, NDCG@20=0.028195
+Run 3/81 done
+Run 4/81 | num_blocks=1, hidden_units=64, num_heads=2, maxlen=50
+  Val  | Recall@10=0.049055, Recall@20=0.080875, NDCG@10=0.02406, NDCG@20=0.032034
+  Test | Recall@10=0.042591, Recall@20=0.070268, NDCG@10=0.021343, NDCG@20=0.02829
+Run 4/81 done
+Run 5/81 | num_blocks=1, hidden_units=64, num_heads=2, maxlen=100
+  Val  | Recall@10=0.047398, Recall@20=0.081372, NDCG@10=0.022832, NDCG@20=0.031325
+  Test | Recall@10=0.038448, Recall@20=0.070268, NDCG@10=0.018877, NDCG@20=0.026913
+Run 5/81 done
+Run 6/81 | num_blocks=1, hidden_units=64, num_heads=2, maxlen=200
+  Val  | Recall@10=0.049055, Recall@20=0.082366, NDCG@10=0.023249, NDCG@20=0.031551
+  Test | Recall@10=0.041763, Recall@20=0.072257, NDCG@10=0.020114, NDCG@20=0.027697
+Run 6/81 done
+Run 7/81 | num_blocks=1, hidden_units=64, num_heads=4, maxlen=50
+  Val  | Recall@10=0.048889, Recall@20=0.083692, NDCG@10=0.023213, NDCG@20=0.031988
+  Test | Recall@10=0.040934, Recall@20=0.072091, NDCG@10=0.019569, NDCG@20=0.027352
+Run 7/81 done
+Run 8/81 | num_blocks=1, hidden_units=64, num_heads=4, maxlen=100
+  Val  | Recall@10=0.049221, Recall@20=0.083195, NDCG@10=0.024003, NDCG@20=0.032511
+  Test | Recall@10=0.040437, Recall@20=0.07408, NDCG@10=0.019749, NDCG@20=0.028149
+Run 8/81 done
+Run 9/81 | num_blocks=1, hidden_units=64, num_heads=4, maxlen=200
+  Val  | Recall@10=0.047895, Recall@20=0.082863, NDCG@10=0.022685, NDCG@20=0.031392
+  Test | Recall@10=0.042094, Recall@20=0.071428, NDCG@10=0.020553, NDCG@20=0.02783
+Run 9/81 done
+Run 10/81 | num_blocks=1, hidden_units=128, num_heads=1, maxlen=50
+  Val  | Recall@10=0.051541, Recall@20=0.083858, NDCG@10=0.02614, NDCG@20=0.034234
+  Test | Recall@10=0.043752, Recall@20=0.074411, NDCG@10=0.021237, NDCG@20=0.028898
+Run 10/81 done
+Run 11/81 | num_blocks=1, hidden_units=128, num_heads=1, maxlen=100
+  Val  | Recall@10=0.048723, Recall@20=0.082863, NDCG@10=0.024761, NDCG@20=0.033311
+  Test | Recall@10=0.039443, Recall@20=0.067782, NDCG@10=0.019409, NDCG@20=0.026466
+Run 11/81 done
+Run 12/81 | num_blocks=1, hidden_units=128, num_heads=1, maxlen=200
+  Val  | Recall@10=0.049221, Recall@20=0.079549, NDCG@10=0.024755, NDCG@20=0.032389
+  Test | Recall@10=0.043254, Recall@20=0.070102, NDCG@10=0.020695, NDCG@20=0.027446
+Run 12/81 done
+Run 13/81 | num_blocks=1, hidden_units=128, num_heads=2, maxlen=50
+  Val  | Recall@10=0.049386, Recall@20=0.081537, NDCG@10=0.025569, NDCG@20=0.033648
+  Test | Recall@10=0.04342, Recall@20=0.071925, NDCG@10=0.021102, NDCG@20=0.028192
+Run 13/81 done
+Run 14/81 | num_blocks=1, hidden_units=128, num_heads=2, maxlen=100
+  Val  | Recall@10=0.051209, Recall@20=0.081869, NDCG@10=0.023897, NDCG@20=0.031634
+  Test | Recall@10=0.037785, Recall@20=0.070599, NDCG@10=0.016898, NDCG@20=0.025144
+Run 14/81 done
+Run 15/81 | num_blocks=1, hidden_units=128, num_heads=2, maxlen=200
+  Val  | Recall@10=0.049883, Recall@20=0.081537, NDCG@10=0.024797, NDCG@20=0.032744
+  Test | Recall@10=0.041431, Recall@20=0.068611, NDCG@10=0.020131, NDCG@20=0.027002
+Run 15/81 done
+Run 16/81 | num_blocks=1, hidden_units=128, num_heads=4, maxlen=50
+  Val  | Recall@10=0.049386, Recall@20=0.081703, NDCG@10=0.025898, NDCG@20=0.033963
+  Test | Recall@10=0.042094, Recall@20=0.073748, NDCG@10=0.021387, NDCG@20=0.029287
+Run 16/81 done
+Run 17/81 | num_blocks=1, hidden_units=128, num_heads=4, maxlen=100
+  Val  | Recall@10=0.050215, Recall@20=0.084355, NDCG@10=0.023645, NDCG@20=0.032199
+  Test | Recall@10=0.037454, Recall@20=0.070102, NDCG@10=0.018109, NDCG@20=0.026284
+Run 17/81 done
+Run 18/81 | num_blocks=1, hidden_units=128, num_heads=4, maxlen=200
+  Val  | Recall@10=0.048889, Recall@20=0.084023, NDCG@10=0.024157, NDCG@20=0.032935
+  Test | Recall@10=0.043254, Recall@20=0.074908, NDCG@10=0.02061, NDCG@20=0.028541
+Run 18/81 done
+Run 19/81 | num_blocks=1, hidden_units=256, num_heads=1, maxlen=50
+  Val  | Recall@10=0.045906, Recall@20=0.077394, NDCG@10=0.023611, NDCG@20=0.031471
+  Test | Recall@10=0.03878, Recall@20=0.067616, NDCG@10=0.01661, NDCG@20=0.023921
+Run 19/81 done
+Run 20/81 | num_blocks=1, hidden_units=256, num_heads=1, maxlen=100
+  Val  | Recall@10=0.048723, Recall@20=0.081537, NDCG@10=0.0251, NDCG@20=0.033386
+  Test | Recall@10=0.039443, Recall@20=0.069439, NDCG@10=0.016902, NDCG@20=0.024481
+Run 20/81 done
+Run 21/81 | num_blocks=1, hidden_units=256, num_heads=1, maxlen=200
+  Val  | Recall@10=0.045575, Recall@20=0.07408, NDCG@10=0.023571, NDCG@20=0.030746
+  Test | Recall@10=0.039277, Recall@20=0.066622, NDCG@10=0.017173, NDCG@20=0.024076
+Run 21/81 done
+Run 22/81 | num_blocks=1, hidden_units=256, num_heads=2, maxlen=50
+  Val  | Recall@10=0.046072, Recall@20=0.07988, NDCG@10=0.02157, NDCG@20=0.030045
+  Test | Recall@10=0.03994, Recall@20=0.069605, NDCG@10=0.017447, NDCG@20=0.02485
+Run 22/81 done
+Run 23/81 | num_blocks=1, hidden_units=256, num_heads=2, maxlen=100
+  Val  | Recall@10=0.047066, Recall@20=0.079549, NDCG@10=0.023137, NDCG@20=0.031239
+  Test | Recall@10=0.038945, Recall@20=0.067948, NDCG@10=0.016564, NDCG@20=0.023825
+Run 23/81 done
+Run 24/81 | num_blocks=1, hidden_units=256, num_heads=2, maxlen=200
+Run 23/81 | num_blocks=1, hidden_units=256, num_heads=2, maxlen=100
+  Val  | Recall@10=0.047066, Recall@20=0.079549, NDCG@10=0.023137, NDCG@20=0.031239
+  Test | Recall@10=0.038945, Recall@20=0.067948, NDCG@10=0.016564, NDCG@20=0.023825
+Run 23/81 done
+Run 24/81 | num_blocks=1, hidden_units=256, num_heads=2, maxlen=200
+  Val  | Recall@10=0.045409, Recall@20=0.073085, NDCG@10=0.023423, NDCG@20=0.030323
+  Test | Recall@10=0.035299, Recall@20=0.058833, NDCG@10=0.016209, NDCG@20=0.022131
+Run 24/81 done
+Run 25/81 | num_blocks=1, hidden_units=256, num_heads=4, maxlen=50
+  Val  | Recall@10=0.045409, Recall@20=0.07408, NDCG@10=0.021773, NDCG@20=0.029012
+  Test | Recall@10=0.03646, Recall@20=0.063142, NDCG@10=0.016065, NDCG@20=0.022759
+Run 25/81 done
+Run 26/81 | num_blocks=1, hidden_units=256, num_heads=4, maxlen=100
+  Val  | Recall@10=0.048558, Recall@20=0.08336, NDCG@10=0.023865, NDCG@20=0.032569
+  Test | Recall@10=0.041266, Recall@20=0.071262, NDCG@10=0.017495, NDCG@20=0.025066
+Run 26/81 done
+Run 27/81 | num_blocks=1, hidden_units=256, num_heads=4, maxlen=200
+  Test | Recall@10=0.03646, Recall@20=0.063142, NDCG@10=0.016065, NDCG@20=0.022759
+Run 25/81 done
+Run 26/81 | num_blocks=1, hidden_units=256, num_heads=4, maxlen=100
+  Val  | Recall@10=0.048558, Recall@20=0.08336, NDCG@10=0.023865, NDCG@20=0.032569
+  Test | Recall@10=0.041266, Recall@20=0.071262, NDCG@10=0.017495, NDCG@20=0.025066
+Run 26/81 done
+Run 27/81 | num_blocks=1, hidden_units=256, num_heads=4, maxlen=200
+Run 25/81 done
+Run 26/81 | num_blocks=1, hidden_units=256, num_heads=4, maxlen=100
+  Val  | Recall@10=0.048558, Recall@20=0.08336, NDCG@10=0.023865, NDCG@20=0.032569
+  Test | Recall@10=0.041266, Recall@20=0.071262, NDCG@10=0.017495, NDCG@20=0.025066
+Run 26/81 done
+Run 27/81 | num_blocks=1, hidden_units=256, num_heads=4, maxlen=200
+Run 26/81 | num_blocks=1, hidden_units=256, num_heads=4, maxlen=100
+  Val  | Recall@10=0.048558, Recall@20=0.08336, NDCG@10=0.023865, NDCG@20=0.032569
+  Test | Recall@10=0.041266, Recall@20=0.071262, NDCG@10=0.017495, NDCG@20=0.025066
+Run 26/81 done
+Run 27/81 | num_blocks=1, hidden_units=256, num_heads=4, maxlen=200
+  Test | Recall@10=0.041266, Recall@20=0.071262, NDCG@10=0.017495, NDCG@20=0.025066
+Run 26/81 done
+Run 27/81 | num_blocks=1, hidden_units=256, num_heads=4, maxlen=200
+  Val  | Recall@10=0.045906, Recall@20=0.0764, NDCG@10=0.024074, NDCG@20=0.031715
+  Test | Recall@10=0.041763, Recall@20=0.067451, NDCG@10=0.019312, NDCG@20=0.025684
+Run 27/81 done
+Run 26/81 done
+Run 27/81 | num_blocks=1, hidden_units=256, num_heads=4, maxlen=200
+  Val  | Recall@10=0.045906, Recall@20=0.0764, NDCG@10=0.024074, NDCG@20=0.031715
+  Test | Recall@10=0.041763, Recall@20=0.067451, NDCG@10=0.019312, NDCG@20=0.025684
+Run 27/81 done
+Run 27/81 | num_blocks=1, hidden_units=256, num_heads=4, maxlen=200
+  Val  | Recall@10=0.045906, Recall@20=0.0764, NDCG@10=0.024074, NDCG@20=0.031715
+  Test | Recall@10=0.041763, Recall@20=0.067451, NDCG@10=0.019312, NDCG@20=0.025684
+Run 27/81 done
+  Val  | Recall@10=0.045906, Recall@20=0.0764, NDCG@10=0.024074, NDCG@20=0.031715
+  Test | Recall@10=0.041763, Recall@20=0.067451, NDCG@10=0.019312, NDCG@20=0.025684
+Run 27/81 done
+Run 28/81 | num_blocks=2, hidden_units=64, num_heads=1, maxlen=50
+  Val  | Recall@10=0.049552, Recall@20=0.08104, NDCG@10=0.023798, NDCG@20=0.031654
+  Test | Recall@10=0.041763, Recall@20=0.072091, NDCG@10=0.020527, NDCG@20=0.028036
+Run 28/81 | num_blocks=2, hidden_units=64, num_heads=1, maxlen=50
+  Val  | Recall@10=0.049552, Recall@20=0.08104, NDCG@10=0.023798, NDCG@20=0.031654
+  Test | Recall@10=0.041763, Recall@20=0.072091, NDCG@10=0.020527, NDCG@20=0.028036
+Run 28/81 done
+Run 29/81 | num_blocks=2, hidden_units=64, num_heads=1, maxlen=100
+  Val  | Recall@10=0.048558, Recall@20=0.082532, NDCG@10=0.023315, NDCG@20=0.031811
+  Test | Recall@10=0.040934, Recall@20=0.071097, NDCG@10=0.020088, NDCG@20=0.027636
+Run 29/81 done
+Run 30/81 | num_blocks=2, hidden_units=64, num_heads=1, maxlen=200
+  Val  | Recall@10=0.047232, Recall@20=0.078223, NDCG@10=0.023095, NDCG@20=0.03087
+  Test | Recall@10=0.040603, Recall@20=0.070599, NDCG@10=0.020339, NDCG@20=0.027878
+Run 30/81 done
+Run 31/81 | num_blocks=2, hidden_units=64, num_heads=2, maxlen=50
+  Val  | Recall@10=0.047563, Recall@20=0.081206, NDCG@10=0.022581, NDCG@20=0.030979
+  Test | Recall@10=0.041763, Recall@20=0.073583, NDCG@10=0.02038, NDCG@20=0.028361
+Run 31/81 done
+Run 32/81 | num_blocks=2, hidden_units=64, num_heads=2, maxlen=100
+  Val  | Recall@10=0.049883, Recall@20=0.08104, NDCG@10=0.024347, NDCG@20=0.03217
+  Test | Recall@10=0.040934, Recall@20=0.072422, NDCG@10=0.020005, NDCG@20=0.027944
+Run 32/81 done
+Run 28/81 | num_blocks=2, hidden_units=64, num_heads=1, maxlen=50
+  Val  | Recall@10=0.049552, Recall@20=0.08104, NDCG@10=0.023798, NDCG@20=0.031654
+  Test | Recall@10=0.041763, Recall@20=0.072091, NDCG@10=0.020527, NDCG@20=0.028036
+Run 28/81 done
+Run 29/81 | num_blocks=2, hidden_units=64, num_heads=1, maxlen=100
+  Val  | Recall@10=0.048558, Recall@20=0.082532, NDCG@10=0.023315, NDCG@20=0.031811
+  Test | Recall@10=0.040934, Recall@20=0.071097, NDCG@10=0.020088, NDCG@20=0.027636
+Run 29/81 done
+Run 30/81 | num_blocks=2, hidden_units=64, num_heads=1, maxlen=200
+  Val  | Recall@10=0.047232, Recall@20=0.078223, NDCG@10=0.023095, NDCG@20=0.03087
+  Test | Recall@10=0.041763, Recall@20=0.072091, NDCG@10=0.020527, NDCG@20=0.028036
+Run 28/81 done
+Run 29/81 | num_blocks=2, hidden_units=64, num_heads=1, maxlen=100
+Run 29/81 | num_blocks=2, hidden_units=64, num_heads=1, maxlen=100
+  Val  | Recall@10=0.048558, Recall@20=0.082532, NDCG@10=0.023315, NDCG@20=0.031811
+  Test | Recall@10=0.040934, Recall@20=0.071097, NDCG@10=0.020088, NDCG@20=0.027636
+Run 29/81 done
+Run 30/81 | num_blocks=2, hidden_units=64, num_heads=1, maxlen=200
+  Val  | Recall@10=0.047232, Recall@20=0.078223, NDCG@10=0.023095, NDCG@20=0.03087
+  Test | Recall@10=0.040934, Recall@20=0.071097, NDCG@10=0.020088, NDCG@20=0.027636
+Run 29/81 done
+Run 30/81 | num_blocks=2, hidden_units=64, num_heads=1, maxlen=200
+  Val  | Recall@10=0.047232, Recall@20=0.078223, NDCG@10=0.023095, NDCG@20=0.03087
+  Test | Recall@10=0.040603, Recall@20=0.070599, NDCG@10=0.020339, NDCG@20=0.027878
+  Val  | Recall@10=0.047232, Recall@20=0.078223, NDCG@10=0.023095, NDCG@20=0.03087
+  Test | Recall@10=0.040603, Recall@20=0.070599, NDCG@10=0.020339, NDCG@20=0.027878
+  Test | Recall@10=0.040603, Recall@20=0.070599, NDCG@10=0.020339, NDCG@20=0.027878
+Run 30/81 done
+Run 31/81 | num_blocks=2, hidden_units=64, num_heads=2, maxlen=50
+  Val  | Recall@10=0.047563, Recall@20=0.081206, NDCG@10=0.022581, NDCG@20=0.030979
+  Test | Recall@10=0.041763, Recall@20=0.073583, NDCG@10=0.02038, NDCG@20=0.028361
+Run 31/81 done
+Run 32/81 | num_blocks=2, hidden_units=64, num_heads=2, maxlen=100
+  Val  | Recall@10=0.049883, Recall@20=0.08104, NDCG@10=0.024347, NDCG@20=0.03217
+  Test | Recall@10=0.040934, Recall@20=0.072422, NDCG@10=0.020005, NDCG@20=0.027944
+Run 32/81 done
+Run 33/81 | num_blocks=2, hidden_units=64, num_heads=2, maxlen=200
+  Val  | Recall@10=0.048558, Recall@20=0.082532, NDCG@10=0.023351, NDCG@20=0.031863
+  Test | Recall@10=0.040768, Recall@20=0.07292, NDCG@10=0.020623, NDCG@20=0.02864
+Run 33/81 done
+Run 34/81 | num_blocks=2, hidden_units=64, num_heads=4, maxlen=50
+  Val  | Recall@10=0.048889, Recall@20=0.079549, NDCG@10=0.023803, NDCG@20=0.031551
+  Test | Recall@10=0.041929, Recall@20=0.07408, NDCG@10=0.020416, NDCG@20=0.028484
+Run 34/81 done
+Run 35/81 | num_blocks=2, hidden_units=64, num_heads=4, maxlen=100
+Run 32/81 done
+Run 33/81 | num_blocks=2, hidden_units=64, num_heads=2, maxlen=200
+  Val  | Recall@10=0.048558, Recall@20=0.082532, NDCG@10=0.023351, NDCG@20=0.031863
+  Test | Recall@10=0.040768, Recall@20=0.07292, NDCG@10=0.020623, NDCG@20=0.02864
+Run 33/81 done
+Run 34/81 | num_blocks=2, hidden_units=64, num_heads=4, maxlen=50
+  Val  | Recall@10=0.048889, Recall@20=0.079549, NDCG@10=0.023803, NDCG@20=0.031551
+  Test | Recall@10=0.041929, Recall@20=0.07408, NDCG@10=0.020416, NDCG@20=0.028484
+Run 34/81 done
+Run 35/81 | num_blocks=2, hidden_units=64, num_heads=4, maxlen=100
+Run 33/81 done
+Run 34/81 | num_blocks=2, hidden_units=64, num_heads=4, maxlen=50
+  Val  | Recall@10=0.048889, Recall@20=0.079549, NDCG@10=0.023803, NDCG@20=0.031551
+  Test | Recall@10=0.041929, Recall@20=0.07408, NDCG@10=0.020416, NDCG@20=0.028484
+Run 34/81 done
+Run 35/81 | num_blocks=2, hidden_units=64, num_heads=4, maxlen=100
+  Val  | Recall@10=0.048889, Recall@20=0.079549, NDCG@10=0.023803, NDCG@20=0.031551
+  Test | Recall@10=0.041929, Recall@20=0.07408, NDCG@10=0.020416, NDCG@20=0.028484
+Run 34/81 done
+Run 35/81 | num_blocks=2, hidden_units=64, num_heads=4, maxlen=100
+Run 34/81 done
+Run 35/81 | num_blocks=2, hidden_units=64, num_heads=4, maxlen=100
+Run 35/81 | num_blocks=2, hidden_units=64, num_heads=4, maxlen=100
+  Val  | Recall@10=0.047895, Recall@20=0.077891, NDCG@10=0.023473, NDCG@20=0.03096
+  Test | Recall@10=0.03878, Recall@20=0.068776, NDCG@10=0.01976, NDCG@20=0.027297
+Run 35/81 done
+Run 36/81 | num_blocks=2, hidden_units=64, num_heads=4, maxlen=200
+  Val  | Recall@10=0.04574, Recall@20=0.080046, NDCG@10=0.023013, NDCG@20=0.031647
+  Test | Recall@10=0.040437, Recall@20=0.070102, NDCG@10=0.020588, NDCG@20=0.027991
+  Test | Recall@10=0.03878, Recall@20=0.068776, NDCG@10=0.01976, NDCG@20=0.027297
+Run 35/81 done
+Run 36/81 | num_blocks=2, hidden_units=64, num_heads=4, maxlen=200
+  Val  | Recall@10=0.04574, Recall@20=0.080046, NDCG@10=0.023013, NDCG@20=0.031647
+  Test | Recall@10=0.040437, Recall@20=0.070102, NDCG@10=0.020588, NDCG@20=0.027991
+Run 35/81 done
+Run 36/81 | num_blocks=2, hidden_units=64, num_heads=4, maxlen=200
+  Val  | Recall@10=0.04574, Recall@20=0.080046, NDCG@10=0.023013, NDCG@20=0.031647
+  Test | Recall@10=0.040437, Recall@20=0.070102, NDCG@10=0.020588, NDCG@20=0.027991
+Run 36/81 | num_blocks=2, hidden_units=64, num_heads=4, maxlen=200
+  Val  | Recall@10=0.04574, Recall@20=0.080046, NDCG@10=0.023013, NDCG@20=0.031647
+  Test | Recall@10=0.040437, Recall@20=0.070102, NDCG@10=0.020588, NDCG@20=0.027991
+  Test | Recall@10=0.040437, Recall@20=0.070102, NDCG@10=0.020588, NDCG@20=0.027991
+Run 36/81 done
+Run 36/81 done
+Run 37/81 | num_blocks=2, hidden_units=128, num_heads=1, maxlen=50
+  Val  | Recall@10=0.049718, Recall@20=0.083029, NDCG@10=0.026073, NDCG@20=0.034436
+  Test | Recall@10=0.040934, Recall@20=0.074411, NDCG@10=0.020368, NDCG@20=0.028807
+Run 37/81 done
+Run 38/81 | num_blocks=2, hidden_units=128, num_heads=1, maxlen=100
+  Val  | Recall@10=0.048889, Recall@20=0.081372, NDCG@10=0.02485, NDCG@20=0.032994
+Run 37/81 | num_blocks=2, hidden_units=128, num_heads=1, maxlen=50
+  Val  | Recall@10=0.049718, Recall@20=0.083029, NDCG@10=0.026073, NDCG@20=0.034436
+  Test | Recall@10=0.040934, Recall@20=0.074411, NDCG@10=0.020368, NDCG@20=0.028807
+Run 37/81 done
+Run 38/81 | num_blocks=2, hidden_units=128, num_heads=1, maxlen=100
+  Val  | Recall@10=0.048889, Recall@20=0.081372, NDCG@10=0.02485, NDCG@20=0.032994
+  Test | Recall@10=0.040106, Recall@20=0.071428, NDCG@10=0.020171, NDCG@20=0.027982
+Run 38/81 done
+Run 39/81 | num_blocks=2, hidden_units=128, num_heads=1, maxlen=200
+
+
+Run 37/81 done
+Run 38/81 | num_blocks=2, hidden_units=128, num_heads=1, maxlen=100
+  Val  | Recall@10=0.048889, Recall@20=0.081372, NDCG@10=0.02485, NDCG@20=0.032994
+  Test | Recall@10=0.040106, Recall@20=0.071428, NDCG@10=0.020171, NDCG@20=0.027982
+Run 38/81 done
+Run 39/81 | num_blocks=2, hidden_units=128, num_heads=1, maxlen=200
+
+
+
+
+
+  Test | Recall@10=0.040106, Recall@20=0.071428, NDCG@10=0.020171, NDCG@20=0.027982
+Run 38/81 done
+Run 39/81 | num_blocks=2, hidden_units=128, num_heads=1, maxlen=200
+
+
+
+  Test | Recall@10=0.040106, Recall@20=0.071428, NDCG@10=0.020171, NDCG@20=0.027982
+Run 38/81 done
+Run 39/81 | num_blocks=2, hidden_units=128, num_heads=1, maxlen=200
+
+  Test | Recall@10=0.040106, Recall@20=0.071428, NDCG@10=0.020171, NDCG@20=0.027982
+Run 38/81 done
+  Test | Recall@10=0.040106, Recall@20=0.071428, NDCG@10=0.020171, NDCG@20=0.027982
+  Test | Recall@10=0.040106, Recall@20=0.071428, NDCG@10=0.020171, NDCG@20=0.027982
+  Test | Recall@10=0.040106, Recall@20=0.071428, NDCG@10=0.020171, NDCG@20=0.027982
+Run 38/81 done
+Run 39/81 | num_blocks=2, hidden_units=128, num_heads=1, maxlen=200
+
+
+
+  Test | Recall@10=0.040106, Recall@20=0.071428, NDCG@10=0.020171, NDCG@20=0.027982
+Run 38/81 done
+Run 39/81 | num_blocks=2, hidden_units=128, num_heads=1, maxlen=200
+  Test | Recall@10=0.040106, Recall@20=0.071428, NDCG@10=0.020171, NDCG@20=0.027982
+  Test | Recall@10=0.040106, Recall@20=0.071428, NDCG@10=0.020171, NDCG@20=0.027982
+Run 38/81 done
+  Test | Recall@10=0.040106, Recall@20=0.071428, NDCG@10=0.020171, NDCG@20=0.027982
+  Test | Recall@10=0.040106, Recall@20=0.071428, NDCG@10=0.020171, NDCG@20=0.027982
+Run 38/81 done
+Run 39/81 | num_blocks=2, hidden_units=128, num_heads=1, maxlen=200
+  Val  | Recall@10=0.051706, Recall@20=0.082532, NDCG@10=0.024363, NDCG@20=0.032098
+  Test | Recall@10=0.044083, Recall@20=0.075571, NDCG@10=0.019576, NDCG@20=0.027467
+Run 39/81 done
+Run 38/81 done
+Run 39/81 | num_blocks=2, hidden_units=128, num_heads=1, maxlen=200
+  Val  | Recall@10=0.051706, Recall@20=0.082532, NDCG@10=0.024363, NDCG@20=0.032098
+Run 40/81 | num_blocks=2, hidden_units=128, num_heads=2, maxlen=50
+
+
+
+
+Run 40/81 | num_blocks=2, hidden_units=128, num_heads=2, maxlen=50
+
+

@@ -1,0 +1,903 @@
+============================================================
+SASRec MovieLens 1M - Experiment Story Log
+============================================================
+This file is a running diary of what we changed, why we
+changed it, what happened, and what we tried next.
+Newest entry is at the BOTTOM.
+
+============================================================
+PREQUEL — How the Codebase Got to This State (Pre-Log)
+============================================================
+
+The model.py and data.py files were originally written by
+my friend, not by me. I started from their version.
+
+In the friend's original code, the key_padding_mask
+argument was ACTIVE (not commented out) inside the
+MultiheadAttention call. With that version:
+  - Every training run gave essentially the same result.
+  - The numbers were stuck at near-random level
+    (NDCG@10 in the ~0.003 - 0.004 range, recall
+    similarly tiny).
+  - It looked like the model "wasn't learning" no matter
+    what hyperparameters were used.
+
+I (without yet knowing the deep reason) commented out the
+key_padding_mask line as a debugging step. After that:
+  - Training started actually progressing.
+  - Metrics jumped to the "normal" SASRec range
+    (NDCG@10 around 0.02+).
+  - That commented-out version is the baseline that the
+    grid search in Chapter 1 was run against.
+
+So at the start of this log, the line was already
+commented out, and that was a deliberate (if poorly
+documented) workaround. Only later did we figure out the
+real cause: left-padding + causal mask + key_padding_mask
+together create all-masked attention rows, which softmax
+turns into NaN, which destroys training.
+
+This prequel exists so future-me does not "fix" the
+comment thinking it is a leftover, and re-trigger the
+exact failure mode the friend's original code had.
+
+============================================================
+CHAPTER 0 — Starting Point (Baseline Code)
+============================================================
+
+The codebase implements SASRec (Self-Attentive Sequential
+Recommender) on MovieLens 1M.
+
+Files:
+- data.py     -> loads movies/ratings, leave-one-out split,
+                 left-pads sequences to maxlen with id 0.
+- model.py    -> SASRec: item_emb + pos_emb -> N transformer
+                 blocks (Pre-LN) -> last LayerNorm.
+- train.py    -> trains with negative sampling +
+                 binary cross-entropy, early stopping on
+                 val NDCG@10.
+- evaluate.py -> full-ranking eval (Recall@10/20, NDCG@10/20),
+                 masks already-seen training items.
+- run_exp.py  -> grid-search runner that calls train.py and
+                 evaluate.py as subprocesses and writes a
+                 CSV of results.
+
+Key design choice in model.py forward():
+  - Padding tokens (id=0) are left-padded.
+  - We zero-out pad embeddings BEFORE attention:
+        seqs *= (X != 0).unsqueeze(-1)
+  - We define key_padding_mask = (X == 0) but DO NOT
+    pass it to MultiheadAttention (it is commented out).
+
+============================================================
+CHAPTER 1 — Phase 1: First Big Grid Search
+============================================================
+
+What we did:
+  Ran a 3 x 3 x 3 x 3 grid search (81 runs) over
+    num_blocks    in {1, 2, 3}
+    hidden_units  in {64, 128, 256}
+    num_heads     in {1, 2, 4}
+    maxlen        in {50, 100, 200}
+  Fixed:
+    epochs=50, patience=5, lr=1e-3, dropout=0.2,
+    batch_size=128, seed=42.
+
+What happened:
+  All scores were low and very flat across configs.
+  Best 3 by val NDCG@10:
+    1. nb=2, h=128, nh=2, maxlen=50 -> NDCG@10 = 0.026366
+    2. nb=1, h=128, nh=1, maxlen=50 -> NDCG@10 = 0.026140
+    3. nb=2, h=128, nh=1, maxlen=50 -> NDCG@10 = 0.026073
+  Pattern observed: maxlen=50 always beat maxlen=100/200,
+  and hidden_units=128 beat 256.
+
+Why we think it stayed low:
+  - The key_padding_mask line is commented out, so pad
+    tokens still receive attention probability mass even
+    though their embeddings are zeroed. Longer sequences
+    (more padding) -> more dilution -> worse NDCG. This
+    explains why maxlen=50 won every time.
+  - 50 epochs + patience=5 is too short for the model to
+    fully converge, especially with weight_decay=1e-4.
+  - Only 1 negative per position is a weak training signal.
+
+============================================================
+CHAPTER 2 — Phase 2: Tuning Dropout and LR
+============================================================
+
+What we did:
+  Took the top-3 configs from Chapter 1 and re-ran them
+  while varying:
+    dropout in {0.1, 0.2 (already done), 0.5}
+    lr      in {0.0005, 0.001, 0.01}
+
+What happened:
+  - dropout = 0.5 > 0.1  (clearer regularization helps)
+  - lr      = 0.001 was the sweet spot (0.01 was unstable,
+              0.0005 too slow within 50 epochs).
+  Best result here: nb=2, h=128, nh=1, maxlen=50,
+                    drop=0.5, lr=0.001
+                    val NDCG@10 = 0.026721
+                    test NDCG@10 = 0.022406
+  Still low overall, but consistent confirmation of
+  dropout=0.5 + lr=0.001 as good defaults.
+
+============================================================
+CHAPTER 3 — Phase 3: More Epochs + Higher Patience + maxlen=200
+============================================================
+
+What we did:
+  Pushed training longer to see if the models were just
+  undertrained:
+    epochs=100, patience=10, dropout=0.5, lr=0.001,
+    maxlen=200, hidden_units=128, num_heads in {1,2},
+    num_blocks in {1,2}.
+
+What happened:
+  Result for nb=1, h=128, nh=1, maxlen=200:
+    Val  NDCG@10 = 0.024974
+    Test NDCG@10 = 0.020810
+  Slightly worse than the maxlen=50 winner. This matches
+  Chapter 1's finding: with the padding-mask bug still
+  present, longer sequences hurt because pad noise is
+  larger.
+
+============================================================
+CHAPTER 4 — Why We Suspect the Code Is the Bottleneck
+============================================================
+
+After 3 phases of tuning, NDCG@10 plateaued around 0.026.
+That ceiling is suspicious. Possible reasons identified:
+
+  (A) key_padding_mask in model.py forward() is commented
+      out. Pad positions (id=0) are zeroed in embedding
+      space but still receive softmax probability mass in
+      attention. Real positions effectively share their
+      attention budget with meaningless pad slots.
+      -> Most likely the dominant issue.
+
+  (B) Only 1 negative sample per positive position in
+      train.py. SASRec usually benefits from many more.
+
+  (C) No LR warmup; flat lr=1e-3 from step 0.
+
+  (D) hidden_units=256 was tested but never with
+      dropout=0.5 + epochs=100. May have been underfitting
+      at epochs=50.
+
+The key_padding_mask bug is the cheapest one to test
+first, so we are starting there.
+
+============================================================
+CHAPTER 5 — Important Caveat About Just Uncommenting It
+============================================================
+
+NOTE TO FUTURE ME: do NOT just uncomment the
+key_padding_mask line and run.
+
+Reason: the sequences are LEFT-padded. Combined with the
+causal attn_mask, at early positions the query token is a
+pad AND all the keys it can causally see are also pads.
+Then every entry in that attention row is -inf, softmax
+becomes NaN, and NaN propagates through the residual path
+and ruins training.
+
+If we want to use key_padding_mask safely, we must also:
+  - switch to right-padding, OR
+  - replace NaN rows with zeros after attention, OR
+  - clamp -inf to -1e9 and mask the output rows manually.
+
+Currently we are testing what happens if we just uncomment
+it (no safety handling) so we can confirm the failure mode
+before applying the proper fix.
+
+============================================================
+CHAPTER 6 — Current Step: Uncommenting key_padding_mask
+============================================================
+
+Date: 2026-04-26
+
+Change applied:
+  In model.py forward(), inside the transformer block loop,
+  the call to self.attention_layers[i] now passes
+  key_padding_mask=key_padding_mask (previously commented
+  out).
+
+Why we are doing it now:
+  - To empirically confirm that naively enabling the mask
+    breaks training because of the all-masked-row NaN
+    issue described in Chapter 5.
+  - This will tell us whether the next step needs to be
+    "right-padding" or "safe NaN handling" before we
+    actually benefit from a real key_padding_mask.
+
+Expected outcome (hypothesis):
+  - Loss becomes NaN within a few batches, OR
+  - val NDCG@10 collapses to ~random performance,
+  because NaN poisons every position in the residual
+  stream.
+
+Actual outcome:
+  Hypothesis CONFIRMED. Single run, same training budget
+  as the best previous setup (epochs=100, dropout=0.5,
+  lr=0.001, patience=10), config nb=2, h=128, nh=4,
+  maxlen=50:
+    Val  | Recall@10=0.007954, Recall@20=0.011435,
+           NDCG@10=0.003923,  NDCG@20=0.004796
+    Test | Recall@10=0.003646, Recall@20=0.006960,
+           NDCG@10=0.001758,  NDCG@20=0.002604
+
+  For comparison, the same family of configs WITHOUT the
+  key_padding_mask line was getting NDCG@10 around 0.026
+  on val and 0.021 on test. So uncommenting the mask
+  collapsed NDCG@10 by roughly 7x to near-random level.
+
+  Interpretation:
+  - At early left-padded positions, the query is a pad
+    AND every causally-allowed key is also a pad -> all
+    -inf row -> NaN softmax -> NaN propagates through
+    residuals -> the entire training run is poisoned.
+  - This proves the line cannot be enabled without an
+    accompanying fix (right-padding, or NaN-safe attention,
+    or post-attention zeroing).
+  - Most importantly, this matches EXACTLY the symptom
+    the original friend's code was showing (see Prequel):
+    same near-random metrics, "model not learning" feel.
+    So this experiment also confirmed historically why
+    commenting out the line was the right empirical fix
+    even though we didn't know the cause back then.
+
+Conclusion:
+  The "padding bug" is real but the cure (just uncommenting
+  the line) is worse than the disease. We are NOT going to
+  ship that change in isolation. Revert it for now.
+
+============================================================
+CHAPTER 7 — Plan: Revert + Pick the Real Bottleneck
+============================================================
+
+Date: 2026-04-26 (planned)
+
+Step 1 (housekeeping):
+  Re-comment the key_padding_mask argument in model.py to
+  return to the known-good baseline (NDCG@10 ~ 0.026).
+
+Step 2 (decide what to attack next):
+  Now that we have empirically ruled out "just turn the
+  mask on" as the easy win, the remaining suspects from
+  Chapter 4 are:
+
+    (B) Only 1 negative sample per positive position.
+    (C) No LR warmup; flat lr=1e-3 from step 0.
+    (D) hidden_units=256 never tested with dropout=0.5
+        + epochs=100 + patience=10.
+
+  Cheapest first experiment is probably (B): increase
+  negatives per positive from 1 to e.g. 5. This usually
+  helps SASRec a lot and only changes train.py, not the
+  model architecture.
+
+  Next experiment after that would be a proper padding fix
+  done the SAFE way (right-padding in data.py, or NaN-safe
+  attention in model.py). That one is bigger surgery but
+  is the "right" long-term fix.
+
+Step 3 (when we want the padding fix done properly):
+  Two acceptable implementations:
+    (a) Right-pad in data.py:
+        return seq + [0] * (maxlen - len(seq))
+        and adjust the prediction layer to use the last
+        non-pad position instead of seqs[:, -1, :].
+    (b) Keep left-pad, but in model.py forward() after
+        each attention call do:
+          attn_output = torch.nan_to_num(attn_output, 0.0)
+          attn_output = attn_output * (X != 0).unsqueeze(-1)
+        so NaN rows become 0 and pad output rows are
+        zeroed out before being added to the residual.
+
+Result: TBD - to be filled when Step 1 is done and Step 2
+chosen.
+
+============================================================
+CHAPTER 8 — Change 1 Applied: Adam betas + no weight_decay
+============================================================
+
+Date: 2026-04-26
+
+Change applied (model.py line 56):
+  OLD: torch.optim.Adam(self.parameters(),
+                        lr=lr,
+                        weight_decay=1e-4)
+  NEW: torch.optim.Adam(self.parameters(),
+                        lr=lr,
+                        betas=(0.9, 0.98),
+                        weight_decay=0.0)
+
+Why we did this:
+  1. PyTorch's default beta2 = 0.999 means Adam remembers
+     gradient magnitudes for ~1000 batches. With thousands
+     of items in the catalog, a rare movie only appears in
+     1-out-of-many batches; Adam keeps its old "this
+     weight moves a lot" memory and gives it tiny updates
+     when it finally reappears -> rare items barely learn.
+     beta2 = 0.98 (~50 batch memory) lets that memory
+     decay between rare appearances, so rare items get
+     proper-sized updates. This is also the value the
+     original SASRec paper specifies.
+  2. weight_decay = 1e-4 multiplies every parameter by
+     ~0.9999 every batch. For a rare item that gets
+     trained once every 200 batches, that's 200 shrinks
+     per 1 real update -> the embedding decays toward 0
+     (the padding vector). Setting it to 0 stops that
+     leak; dropout already provides regularization.
+
+Config tested:
+  num_blocks   = 2
+  hidden_units = 128
+  num_heads    = 4
+  maxlen       = 50
+  epochs       = 50
+  dropout      = 0.5 (default in run_exp.py / train.py)
+  lr           = 1e-3
+  patience     = 5  (default)
+  command:     python run_exp.py --epochs 50
+
+Result (full metrics from terminal log):
+                Recall@10   Recall@20   NDCG@10    NDCG@20
+  Before:        ~0.0524     ~0.0852    0.026538   ~0.0349
+  After (now):   0.052535    0.086509   0.026883   0.035402   <- val
+                 0.043420    0.076400   0.021646   0.029884   <- test
+
+  Delta on val NDCG@10 = +0.000345 (+1.3%)
+  All four val metrics moved up; all four test metrics
+  also moved up. So the change helped both splits, not
+  just val.
+
+Interpretation:
+  - Modest but real improvement, in the predicted
+    direction. This supports the rare-item-undertraining
+    hypothesis.
+  - Improvement size is small because the dataset is not
+    extremely long-tailed and dropout=0.5 already does a
+    lot of regularization, so removing weight_decay frees
+    only a small amount of headroom.
+  - This is a clean, rubric-compliant "Adam tuning" change
+    we can cite in the report under
+    "Training & Optimization (20 pts)".
+
+Status: KEPT. We move on to the next tweak from this new
+baseline (val NDCG@10 = 0.026883).
+
+============================================================
+CHAPTER 9 — Change 2 Applied: Linear LR Warmup Scheduler
+============================================================
+
+Date: 2026-04-26
+
+Change applied (train.py, two edits, both tagged with
+the comment "# change after grid search"):
+
+  Edit 1 - right after the model is built, add a linear
+           warmup scheduler:
+
+      # change after grid search
+      warmup_steps = 1000
+      def lr_lambda(step):
+          if step < warmup_steps:
+              return float(step + 1) / float(warmup_steps)
+          return 1.0
+      scheduler = torch.optim.lr_scheduler.LambdaLR(
+          model.optimizer, lr_lambda
+      )
+
+  Edit 2 - inside the training loop, right after
+           model.optimizer.step(), step the scheduler too:
+
+      scheduler.step()  # change after grid search
+
+Why we did this:
+  At the very start of training, the model's weights are
+  random and the gradients are large and noisy. Taking
+  full-size steps in this phase can permanently corrupt
+  the embedding table - early bad updates create patterns
+  that the rest of training has to fight against.
+
+  A linear warmup ramps the learning rate from 0 up to
+  the target lr (1e-3) over the first 1000 mini-batches.
+  After that the lr stays at 1e-3 for the rest of
+  training.
+
+  Effect:
+    - Early training is gentler -> embedding table
+      starts off more stable.
+    - After step 1000 we are running at the same lr as
+      before, so worst case the result is identical to
+      the previous baseline.
+    - The README explicitly allows "appropriate learning
+      rate tuning OR scheduling", so this is rubric-safe
+      and earns marks under "Training & Optimization".
+
+Risk:
+  Very low. After the warmup window ends the behavior is
+  identical to before. Worst-case: same as baseline.
+
+Config to test (same as Chapter 8 so the comparison is
+clean):
+  num_blocks   = 2
+  hidden_units = 128
+  num_heads    = 4
+  maxlen       = 50
+  epochs       = 50
+  dropout      = 0.5
+  lr           = 1e-3
+  patience     = 5
+  command:     python run_exp.py --epochs 50
+
+Baseline to beat (after Change 1):
+  val  NDCG@10 = 0.026883
+  test NDCG@10 = 0.021646
+
+Result (full metrics from terminal log):
+                  Recall@10   Recall@20   NDCG@10    NDCG@20
+  Before warmup:  0.052535    0.086509    0.026883   0.035402   <- val
+                  0.043420    0.076400    0.021646   0.029884   <- test
+
+  After warmup:   0.050546    0.080046    0.025061   0.032431   <- val
+                  0.043917    0.071594    0.020879   0.027823   <- test
+
+  Delta on val NDCG@10  = -0.001822 (-6.8%)
+  Delta on val NDCG@20  = -0.002971
+  Delta on test NDCG@10 = -0.000767
+  Delta on test NDCG@20 = -0.002061
+
+  All four val metrics went DOWN. test Recall@10 went up
+  marginally (+0.0005), all other test metrics went down.
+  Net verdict: the change hurt overall.
+
+Why it hurt (best explanation):
+  Total training steps for this run:
+    ~6040 users / batch_size 128 ~= 47 batches per epoch
+    50 epochs * 47 batches  ~= 2350 total steps
+  Warmup window was set to 1000 steps, so about
+  1000 / 2350 ~= 42% of the entire training run was spent
+  at a reduced learning rate.
+
+  Then patience=5 (default in run_exp.py) kicked in and
+  early-stopped the run before it could recover from the
+  slow start.
+
+  Warmup is meant to be ~5-10% of total training, not
+  ~42%. The original SASRec paper trains 200+ epochs, so
+  1000 warmup steps would be ~10% there. Our short
+  training schedule made the same value disastrous.
+
+  Possible "future-me" fix: warmup_steps = 100 to 200
+  (which is ~5-10% of our total steps) might help, but we
+  did NOT test that this round - it is parked for later.
+
+Decision: REVERT.
+  We delete the warmup scheduler entirely from train.py
+  and return to the post-Change-1 baseline (no warmup,
+  Adam betas=(0.9, 0.98), weight_decay=0).
+
+  Lines being removed from train.py:
+    - The 6-line "warmup_steps / lr_lambda / scheduler"
+      block right after the SASRec model is built.
+    - The "scheduler.step()" line inside the training
+      loop.
+
+Status: REVERTED. New (restored) baseline going forward:
+  val  NDCG@10 = 0.026883
+  test NDCG@10 = 0.021646
+  (same as end of Chapter 8 / Change 1).
+
+Lesson noted:
+  Schedulers must be sized to the actual training budget,
+  not copied as-is from papers that train 4-8x longer.
+
+============================================================
+CHAPTER 10 — Change 3 Applied: Negative Sampling Now
+              Matches Official SASRec (train_histories
+              instead of user_histories)
+============================================================
+
+Date: 2026-04-26
+
+Background:
+  We checked the official SASRec implementation
+  (https://github.com/kang205/SASRec) to compare what
+  exclusion set their negative sampler uses.
+
+  Their sampler.py does:
+      ts = set(user_train[user])
+      ...
+      neg[idx] = random_neq(1, itemnum + 1, ts)
+
+  And their util.py defines:
+      user_train[user] = User[user][:-2]
+      user_valid[user] = [User[user][-2]]
+      user_test[user]  = [User[user][-1]]
+
+  So the official code excludes ONLY the user's training
+  history. It does NOT exclude val or test target items.
+
+Mapping to our 3 sampler variants in train.py:
+  Variant A (pure random)        - excludes nothing
+  Variant B (user-aware/prefix)  - excludes only the
+                                   current input window
+                                   (truncated to maxlen)
+  Variant C (active, full hist)  - excludes train + val
+                                   + test (mild val/test
+                                   info leak)
+
+  None of the three matches the paper exactly. The paper
+  sits between B and C: stricter than B (uses the FULL
+  training history, not just what fits in maxlen) but
+  looser than C (does not exclude val/test).
+
+Lucky coincidence:
+  data.py already builds BOTH sets when loading the
+  dataset:
+      self.user_histories.append(set(movies))
+      self.train_histories.append(set(movies[:-2]))
+
+  So train_histories is exactly equal to
+  set(user_train[user]) from the official code. We just
+  needed to point the sampler at it.
+
+Change applied (train.py, single line swap inside the
+training loop):
+
+  OLD (commented out, kept for record):
+    # batch_histories = [dataset.user_histories[i] for i in row_idx.tolist()]
+    # change after grid search - excluded train+val+test (val/test info leak)
+
+  NEW:
+    batch_histories = [dataset.train_histories[i] for i in row_idx.tolist()]
+    # change after grid search - matches official SASRec
+    # (excludes only training history)
+
+Why we did this:
+  1. Match the paper / reference implementation exactly,
+     so the model is rubric-defensible:
+     "Negative sampling matches the official SASRec
+      implementation (kang205/SASRec)."
+  2. Remove the val/test info leak. With user_histories,
+     val/test target items were NEVER pushed down during
+     training, which gave them an artificial scoring
+     boost at evaluation time. Now they get treated like
+     any other item during training.
+  3. The function signature did not change. The slow
+     Python double-loop in sample_negative_items still
+     runs the same way; only the SET it rejects against
+     is different. Risk = minimal.
+
+Expected effect:
+  Sign is unpredictable.
+    - Could go DOWN slightly: removing the leak means
+      val/test items lose their artificial protection ->
+      lower headline numbers, but more honest.
+    - Could go UP: cleaner training signal -> better
+      embeddings -> better full-ranking on val/test.
+  Either way the result is more honest and more closely
+  aligned with the paper.
+
+Config to test (same as Chapters 8 and 9 for clean
+comparison):
+  num_blocks   = 2
+  hidden_units = 128
+  num_heads    = 4
+  maxlen       = 50
+  epochs       = 50
+  dropout      = 0.5
+  lr           = 1e-3
+  patience     = 5
+  command:     python run_exp.py --epochs 50
+
+Baseline to beat (post-Change-1, post-Change-2 revert):
+  val  NDCG@10 = 0.026883
+  test NDCG@10 = 0.021646
+
+Result:
+  Run command: python run_exp.py --epochs 50
+  Run 1/1 | num_blocks=2, hidden_units=128, num_heads=4,
+           maxlen=50
+
+  Val  | Recall@10=0.053198, Recall@20=0.083692,
+         NDCG@10  =0.026540, NDCG@20  =0.034189
+  Test | Recall@10=0.041763, Recall@20=0.075074,
+         NDCG@10  =0.020831, NDCG@20  =0.029183
+
+Delta vs Chapter 9 baseline (post-Change-1):
+  Delta on val  NDCG@10 = -0.000343  (-1.3%)
+  Delta on test NDCG@10 = -0.000815  (-3.8%)
+  Delta on val  Recall@10 = +0.001143
+  Delta on val  Recall@20 = +0.000459
+  Delta on test Recall@10 = -0.000770
+  Delta on test Recall@20 = +0.000970
+
+Interpretation:
+  Both NDCG numbers ticked DOWN slightly; recall is mixed.
+  This is the expected and HONEST outcome - we removed the
+  val/test info leak that was artificially boosting our
+  earlier scores. The model now treats val/test items
+  exactly like any other item during training (same as the
+  official SASRec sampler.py).
+
+  In other words: the previous 0.026883 was inflated by
+  excluding val/test items from negative sampling. The new
+  0.026540 is the un-inflated, paper-aligned number.
+
+Decision: KEEP the change.
+  Reasons:
+    1. The change makes our negative sampler match the
+       official kang205/SASRec implementation that the
+       README explicitly tells us to refer to.
+    2. The drop is tiny (~1.3% val NDCG@10) and clearly
+       attributable to removing data leakage, not to a bug.
+    3. The new numbers are defensible in the report -
+       under any honest evaluation protocol, this is the
+       correct number to report.
+
+  Status: KEPT. New baseline going forward:
+    val  NDCG@10 = 0.026540
+    test NDCG@10 = 0.020831
+
+Lesson noted:
+  When comparing implementations, always check the
+  exclusion set used during negative sampling. A subtle
+  difference (excluding val/test target vs not) can move
+  headline metrics by a percent or two without any
+  modeling change at all.
+
+============================================================
+CHAPTER 11 — Change 4: Item Embedding Scaling by sqrt(d)
+              (matches official SASRec / Transformer paper)
+============================================================
+
+Date: 2026-04-26
+
+Background:
+  After aligning the negative sampler with the official
+  SASRec (Chapter 10), we kept reading the official repo to
+  see what other architectural details we were missing.
+
+  In tensorflow/modules.py of kang205/SASRec, the
+  embedding() helper has a "scale" argument:
+
+      def embedding(inputs, vocab_size, num_units, ...,
+                    scale=True, ...):
+          ...
+          if scale:
+              outputs = outputs * (num_units ** 0.5)
+          return outputs
+
+  And in model.py it is called with scale=True for the
+  item embedding:
+
+      self.seq, item_emb_table = embedding(self.input_seq,
+                                vocab_size=itemnum + 1,
+                                num_units=args.hidden_units,
+                                ...
+                                scale=True, ...)
+
+  But for the positional embedding, it is called with
+  scale=False:
+
+      t, pos_emb_table = embedding(..., scale=False, ...)
+
+  So the official code multiplies the ITEM embedding (and
+  ONLY the item embedding) by sqrt(hidden_units) before
+  adding the positional embedding.
+
+  This trick is straight from the original Transformer
+  paper ("Attention Is All You Need", Vaswani et al. 2017),
+  Section 3.4:
+
+      "In the embedding layers, we multiply those weights
+       by sqrt(d_model)."
+
+  Our current PyTorch implementation in model.py simply
+  does:
+
+      seqs = self.item_emb(X) + self.pos_emb(positions)
+
+  i.e. no sqrt(d) scaling. So we are missing this detail.
+
+Why it matters (intuition):
+  - Both nn.Embedding tables are initialized to small
+    values (typical std ~ 0.02 with default init, or
+    similar order of magnitude for both item and pos).
+  - When you add them, item and positional contributions
+    are roughly equal in magnitude.
+  - Scaling the item embedding by sqrt(d) makes the
+    item-identity signal larger than the positional
+    signal at the start of training, which is what the
+    Transformer paper found works well.
+  - It also keeps embedding magnitudes in the range that
+    plays cleanly with the 1/sqrt(d) factor inside scaled
+    dot-product attention.
+  - It is standard practice. Both Vaswani et al. (2017)
+    and the original SASRec implementation use it.
+
+Rubric check (README.md, "2. SASRec Model (20 points)"):
+  - "Item embeddings and positional embeddings"  -> still
+    have both. Scaling does not remove either.
+  - "Self-attention blocks", "Causal attention masking",
+    "Feedforward layers, dropout, and layer normalization",
+    "A final prediction layer"  -> all unchanged.
+  - "Use PyTorch ... You may not simply call a ready-made
+    SASRec package without understanding and adapting the
+    architecture yourself."  -> we are still hand-writing
+    the architecture in PyTorch; this is just a one-line
+    refinement.
+  - "You may refer to the official SASRec implementation
+    for guidance: https://github.com/kang205/SASRec"
+    -> we ARE referring to it, exactly as allowed.
+  Verdict: 100% rubric-compliant. No violation.
+
+Change applied (model.py, single-line edit inside forward):
+
+  OLD:
+    seqs = self.item_emb(X) + self.pos_emb(positions)
+
+  NEW:
+    seqs = self.item_emb(X) * (self.item_emb.embedding_dim ** 0.5) \
+           + self.pos_emb(positions)
+    # change after grid search - matches official SASRec
+    # (kang205/SASRec modules.py embedding(..., scale=True))
+    # and the original Transformer paper
+    # (Vaswani et al. 2017, Section 3.4).
+
+  Note: we read embedding_dim off the embedding layer
+  itself instead of saving hidden_units as an extra
+  attribute - same value, less plumbing.
+
+Why we did this:
+  1. Match the official reference implementation more
+     closely (the rubric explicitly tells us to refer to
+     it).
+  2. Match the original Transformer paper's prescription.
+  3. One line, low risk. Easy to revert if it hurts.
+  4. Defensible report sentence: "Following the original
+     Transformer convention adopted by the official SASRec
+     implementation (modules.py, scale=True), we scale
+     item embeddings by sqrt(d_model) before adding
+     positional embeddings."
+
+Expected effect:
+  Small positive, typically +1-3% on NDCG@10 in similar
+  setups. Sign should be positive but magnitude is modest.
+  Could plausibly be a wash. Should not cause a regression.
+
+Config to test (same as Chapters 8/9/10 for clean
+comparison):
+  num_blocks   = 2
+  hidden_units = 128
+  num_heads    = 4
+  maxlen       = 50
+  epochs       = 50
+  dropout      = 0.5
+  lr           = 1e-3
+  patience     = 5
+  command:     python run_exp.py --epochs 50
+
+Baseline to beat (post-Change-3 / Chapter 10 honest
+baseline):
+  val  NDCG@10 = 0.026540
+  test NDCG@10 = 0.020831
+
+Result:
+  Run command: python run_exp.py --epochs 50
+  Run 1/1 | num_blocks=2, hidden_units=128, num_heads=4,
+           maxlen=50
+
+  Val  | Recall@10=0.052204, Recall@20=0.082863,
+         NDCG@10  =0.026300, NDCG@20  =0.034045
+  Test | Recall@10=0.042757, Recall@20=0.075074,
+         NDCG@10  =0.020484, NDCG@20  =0.028606
+
+Delta vs Chapter 10 baseline (post-Change-3):
+  Delta on val  NDCG@10   = -0.000240  (-0.9%)
+  Delta on val  NDCG@20   = -0.000144  (-0.4%)
+  Delta on val  Recall@10 = -0.000994  (-1.9%)
+  Delta on val  Recall@20 = -0.000829  (-1.0%)
+  Delta on test NDCG@10   = -0.000347  (-1.7%)
+  Delta on test NDCG@20   = -0.000577  (-2.0%)
+  Delta on test Recall@10 = +0.000994  (+2.4%)
+  Delta on test Recall@20 =  0.000000  ( 0.0%)
+
+  7 of 8 metrics flat or down. Both NDCG@10 (the headline
+  metric) ticked down. The single positive (test
+  Recall@10, +2.4%) is most likely noise from a
+  single-seed run.
+
+Why it hurt (best explanation):
+  The sqrt(d) embedding scaling trick is calibrated to
+  TensorFlow's default initialization for embedding
+  tables, which is a truncated normal with a small std
+  (typically around 0.01-0.02 for the official SASRec).
+
+  PyTorch's nn.Embedding default initialization is
+  N(0, 1) - i.e. unit variance, which is roughly two
+  orders of magnitude larger than TF's default.
+
+  With our config:
+    hidden_units = 128
+    sqrt(128)    ~= 11.31
+
+  So in our PyTorch setup, every item embedding starts
+  at roughly:
+        scale ~= 11.31 * O(1) = O(11)
+  while the positional embedding (also default-initialized
+  in PyTorch) starts at:
+        scale ~= O(1)
+
+  That's a ~10x dominance of the item signal over the
+  positional signal at the start of training - the
+  opposite of "balanced" which is what the trick was
+  supposed to give us. In a TF setup with std~0.01 init,
+  scaling brings the item signal UP from ~0.01 to ~0.11,
+  which is closer to the positional signal's scale of
+  ~0.01-1. In our setup, scaling makes a pre-existing
+  imbalance worse.
+
+  Net effect: the model has to spend early training
+  re-balancing the two signals, which is wasted budget
+  given our short training schedule (50 epochs,
+  patience=5).
+
+  This is the same lesson as Change 2 (warmup) in a
+  different costume: tricks copied from a paper that
+  trains 200+ epochs on TF can backfire in our 50-epoch
+  PyTorch setup.
+
+Decision: REVERT.
+  Reasons:
+    1. Net effect is negative on the headline metric.
+    2. The mechanism by which it hurts (init mismatch
+       between TF and PyTorch) is not something we can
+       cheaply fix without also retuning init schemes,
+       which is out of scope for this assignment cycle.
+    3. Reverting is one line. Cheap, safe, no side
+       effects.
+
+  Lines being reverted in model.py:
+    OLD (Change 4, being removed):
+      seqs = self.item_emb(X) * (self.item_emb.embedding_dim ** 0.5) \
+             + self.pos_emb(positions)
+    NEW (back to Chapter 10 state):
+      seqs = self.item_emb(X) + self.pos_emb(positions)
+
+Status: REVERTED. New (restored) baseline going forward
+is unchanged from end of Chapter 10:
+  val  NDCG@10 = 0.026540
+  test NDCG@10 = 0.020831
+
+Lesson noted:
+  Architectural tricks lifted from the official SASRec
+  (which is in TensorFlow) need to be re-tested when
+  ported to PyTorch, because the default initialization
+  schemes differ. A trick that is "free" in TF can be
+  net-negative in PyTorch without paired init changes.
+
+  This is a useful negative result for the report:
+  "We tested embedding scaling by sqrt(d) as in
+   the official SASRec implementation, but found it
+   slightly hurt performance in our PyTorch port,
+   likely due to PyTorch's default nn.Embedding
+   initialization having a much larger variance than
+   TensorFlow's. We reverted the change."
+
+============================================================
+TEMPLATE FOR FUTURE ENTRIES
+============================================================
+CHAPTER N — <short title>
+Date: YYYY-MM-DD
+Change applied: <what code was edited>
+Why: <reason / hypothesis>
+Config used: <hyperparameters>
+Result: <metrics or observations>
+Conclusion / next step: <what we learned, what to try next>
+============================================================

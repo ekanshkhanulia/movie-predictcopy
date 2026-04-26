@@ -53,7 +53,9 @@ class SASRec(nn.Module):
         
         self.last_layernorm = nn.LayerNorm(hidden_units, eps=1e-8)
 
-        self.optimizer = torch.optim.Adam(self.parameters(), lr=lr, weight_decay=1e-4)
+        #self.optimizer = torch.optim.Adam(self.parameters(), lr=lr, weight_decay=1e-4)  change 1
+        self.optimizer = torch.optim.Adam(self.parameters(), lr=lr, betas=(0.9, 0.98), weight_decay=0.0)
+
         
         self.device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
         self.to(self.device)
@@ -68,6 +70,15 @@ class SASRec(nn.Module):
         positions = torch.arange(seq_len, device=self.device).unsqueeze(0).expand_as(X)
 
         # Combine item and positional embeddings, and add dropout
+        # change after grid search - DOESN'T WORK
+        # Tried scaling item embeddings by sqrt(d) to match official SASRec
+        # (kang205/SASRec modules.py, scale=True) and Vaswani et al. 2017.
+        # Result: val NDCG@10 0.026540 -> 0.026300 (-0.9%); 7/8 metrics down.
+        # Likely cause: official uses TF init (small std ~0.01), PyTorch
+        # nn.Embedding defaults to N(0,1) - scaling by sqrt(128) ~= 11.31 on
+        # top of that overwhelms the positional signal. Reverted.
+        # See CHANGE_LOG Chapter 11.
+        # seqs = self.item_emb(X) * (self.item_emb.embedding_dim ** 0.5) + self.pos_emb(positions)
         seqs = self.item_emb(X) + self.pos_emb(positions)
         seqs = self.emb_dropout(seqs)
 
@@ -87,7 +98,7 @@ class SASRec(nn.Module):
             attn_output, _ = self.attention_layers[i](
                 seqs_norm, seqs_norm, seqs_norm,
                 attn_mask=attn_mask,
-                ## key_padding_mask=key_padding_mask chnage2
+                #key_padding_mask=key_padding_mask  #chnage2
             )
 
             # Residual connection

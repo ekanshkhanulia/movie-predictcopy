@@ -1,0 +1,38 @@
+
+at time of grid search the parameters were:
+
+
+Varied (grid):
+
+num_blocks: 1, 2, 3
+hidden_units: 64, 128, 256
+num_heads: 1, 2, 4
+maxlen: 50, 100, 200
+
+
+Fixed:
+
+epochs: 50
+patience: 5
+lr: 0.001
+dropout_rate: 0.2
+batch_size: 128
+seed: 42
+
+
+
+An these have the highest ndcg@10 after the grid search 
+1st: num_blocks=2, hidden_units=128, num_heads=2, maxlen=50 → val_ndcg@10 = 0.026366
+
+2nd: num_blocks=1, hidden_units=128, num_heads=1, maxlen=50 → val_ndcg@10 = 0.026140
+
+3rd: num_blocks=2, hidden_units=128, num_heads=1, maxlen=50 → val_ndcg@10 = 0.026073
+
+
+
+
+so  xperiment happend on them 
+
+
+dropout 0.5 is better than 0.1 (already set dropout at time of grid search was 0.2
+lr 0.001 is better than 0.01 and 0.0005
